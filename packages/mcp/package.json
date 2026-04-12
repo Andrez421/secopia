@@ -1,0 +1,47 @@
+{
+  "name": "@secopia/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for querying Colombian public procurement data (SECOP I & II)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "secopia-mcp": "./dist/bin/mcp.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup && tsc --project tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "lint": "biome check src/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@secopia/socrata-client": "workspace:*",
+    "@secopia/types": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "secop",
+    "colombia",
+    "contratacion-publica",
+    "open-data"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/secopia/secopia",
+    "directory": "packages/mcp"
+  }
+}

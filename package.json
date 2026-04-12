@@ -1,0 +1,29 @@
+{
+  "name": "secopia",
+  "private": true,
+  "description": "Buscador de contratación pública de Colombia (SECOP I y II)",
+  "license": "MIT",
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check": "turbo check",
+    "lint": "turbo lint",
+    "format": "biome format --write .",
+    "test": "turbo test",
+    "clean": "turbo clean",
+    "sync:typesense": "tsx scripts/sync-typesense.ts"
+  },
+  "dependencies": {
+    "@secopia/socrata-client": "workspace:*",
+    "@secopia/types": "workspace:*",
+    "typesense": "^1.8.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "turbo": "^2.0.0"
+  }
+}

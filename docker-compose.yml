@@ -1,0 +1,64 @@
+# Docker Compose for local development / self-hosting
+#
+# Provides Redis (cache + rate limiting) via Upstash-compatible HTTP proxy
+# and Typesense (full-text search).
+# The web app and MCP server run outside Docker during development.
+#
+# Usage:
+#   docker compose up -d
+#
+# Then set in your .env.local:
+#   UPSTASH_REDIS_REST_URL=http://localhost:8079
+#   UPSTASH_REDIS_REST_TOKEN=dev-token
+#   TYPESENSE_HOST=localhost
+#   TYPESENSE_PORT=8108
+#   TYPESENSE_PROTOCOL=http
+#   TYPESENSE_API_KEY=dev-key
+#   TYPESENSE_ADMIN_API_KEY=dev-key
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Upstash-compatible HTTP proxy for @upstash/redis SDK
+  # Wraps native Redis with REST API that the Upstash SDK expects
+  serverless-redis-http:
+    image: hiett/serverless-redis-http:latest
+    ports:
+      - "8079:80"
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: dev-token
+      SRH_CONNECTION_STRING: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  typesense:
+    image: typesense/typesense:27.1
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense-data:/data
+    command: --data-dir /data --api-key=dev-key --enable-cors
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
+  typesense-data:

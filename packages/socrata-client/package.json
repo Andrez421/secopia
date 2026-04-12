@@ -1,0 +1,27 @@
+{
+  "name": "@secopia/socrata-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Socrata SODA API client with SoQL builder and LRU cache",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "lint": "biome check src/",
+    "test": "node --test --import tsx src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@secopia/types": "workspace:*"
+  }
+}
