@@ -7,8 +7,8 @@
  * On the search page: updates URL params (controlled by parent).
  */
 
-import { useState, useCallback, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { type FormEvent, useCallback, useState } from "react";
 
 interface SearchBarProps {
   /** Initial search term (from URL params) */
@@ -45,7 +45,6 @@ export function SearchBar({ defaultValue = "", onSearch }: SearchBarProps) {
         placeholder="Buscar entidad, proveedor o contrato..."
         className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 text-base outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
         autoComplete="off"
-        autoFocus
       />
       <button
         type="submit"

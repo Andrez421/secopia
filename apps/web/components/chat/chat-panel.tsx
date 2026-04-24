@@ -15,7 +15,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRef, useEffect, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 const SUGGESTED_PROMPTS = [
   "¿Cuáles son los contratos más grandes de Bogotá este año?",
@@ -34,6 +34,7 @@ export function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll on new messages
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -64,8 +65,8 @@ export function ChatPanel() {
               Preguntale a Secopia sobre contratación pública
             </h3>
             <p className="mt-2 max-w-md text-sm text-[var(--color-muted)]">
-              Consulta datos reales de SECOP I y II. Pregunta por entidades,
-              proveedores, contratos o departamentos.
+              Consulta datos reales de SECOP I y II. Pregunta por entidades, proveedores, contratos
+              o departamentos.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {SUGGESTED_PROMPTS.map((prompt) => (
@@ -167,9 +168,15 @@ function MessageContent({ content }: { content: string }) {
       {paragraphs.map((paragraph, i) => {
         const lines = paragraph.split("\n");
         return (
-          <div key={`p-${i}`}>
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: static text content, order never changes
+            key={`p-${i}`}
+          >
             {lines.map((line, j) => (
-              <p key={`l-${j}`}>
+              <p
+                // biome-ignore lint/suspicious/noArrayIndexKey: static text content
+                key={`l-${j}`}
+              >
                 <FormattedLine text={line} />
               </p>
             ))}
@@ -183,29 +190,28 @@ function MessageContent({ content }: { content: string }) {
 function FormattedLine({ text }: { text: string }) {
   // Process **bold** and `code` inline
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const elements: React.ReactNode[] = [];
 
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={i} className="font-semibold">
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-        if (part.startsWith("`") && part.endsWith("`")) {
-          return (
-            <code
-              key={i}
-              className="rounded bg-[var(--color-border)] px-1 py-0.5 font-mono text-xs"
-            >
-              {part.slice(1, -1)}
-            </code>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </>
-  );
+  for (const part of parts) {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      elements.push(
+        <strong key={`b-${elements.length}`} className="font-semibold">
+          {part.slice(2, -2)}
+        </strong>,
+      );
+    } else if (part.startsWith("`") && part.endsWith("`")) {
+      elements.push(
+        <code
+          key={`c-${elements.length}`}
+          className="rounded bg-[var(--color-border)] px-1 py-0.5 font-mono text-xs"
+        >
+          {part.slice(1, -1)}
+        </code>,
+      );
+    } else {
+      elements.push(<span key={`s-${elements.length}`}>{part}</span>);
+    }
+  }
+
+  return <>{elements}</>;
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
@@ -37,16 +38,16 @@ export default function RootLayout({
         <Providers>
           <header className="border-b border-[var(--color-border)]">
             <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-              <a href="/" className="text-xl font-bold tracking-tight">
+              <Link href="/" className="text-xl font-bold tracking-tight">
                 🔍 Secopia
-              </a>
+              </Link>
               <div className="flex items-center gap-4 text-sm text-[var(--color-muted)]">
-                <a
+                <Link
                   href="/buscar"
                   className="hover:text-[var(--color-foreground)] transition-colors"
                 >
                   Buscar
-                </a>
+                </Link>
                 <a
                   href="https://github.com/secopia/secopia"
                   target="_blank"
@@ -69,8 +70,8 @@ export default function RootLayout({
                 className="underline"
               >
                 datos.gov.co
-              </a>
-              {" "}· Open Source
+              </a>{" "}
+              · Open Source
             </p>
           </footer>
         </Providers>

@@ -11,15 +11,15 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { SocrataClient, SoQLBuilder, DATASETS } from "@secopia/socrata-client";
+import { DATASETS, SoQLBuilder, type SocrataClient } from "@secopia/socrata-client";
 import {
   buscarContratosSchema,
   buscarProcesosSchema,
-  buscarSecop1Schema,
   buscarProveedoresSchema,
+  buscarSecop1Schema,
   detalleContratoSchema,
-  historialProveedorSchema,
   estadisticasEntidadSchema,
+  historialProveedorSchema,
   topProveedoresSchema,
 } from "./schemas.js";
 
@@ -157,12 +157,11 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
     async (args): Promise<CallToolResult> => {
       try {
         const ds = DATASETS.contratos;
-        const q = new SoQLBuilder()
-          .select([
-            ds.campos.proveedor,
-            ds.campos.documento_proveedor,
-            ds.campos.departamento,
-          ]);
+        const q = new SoQLBuilder().select([
+          ds.campos.proveedor,
+          ds.campos.documento_proveedor,
+          ds.campos.departamento,
+        ]);
 
         if (args.nombre) q.like(ds.campos.proveedor, args.nombre);
         if (args.nit) q.like(ds.campos.documento_proveedor, args.nit);
@@ -199,7 +198,7 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
         const q = new SoQLBuilder();
 
         if (args.id_contrato) q.equals(ds.campos.id_contrato, args.id_contrato);
-        if (args.id_portafolio) q.equals("referencia_del_contrato", args.id_portafolio);
+        if (args.id_portafolio) q.equals(ds.campos.referencia, args.id_portafolio);
 
         q.limit(1);
 
@@ -230,7 +229,7 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
         const ds = DATASETS.contratos;
         const q = new SoQLBuilder();
 
-        q.like(ds.campos.documento_proveedor, args.nit);
+        q.equals(ds.campos.documento_proveedor, args.nit);
         if (args.fecha_inicio) q.gte(ds.campos.fecha_firma, args.fecha_inicio);
 
         q.orderBy(ds.campos.fecha_firma).limit(args.limite);
@@ -261,14 +260,13 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
     async (args): Promise<CallToolResult> => {
       try {
         const ds = DATASETS.contratos;
-        const q = new SoQLBuilder()
-          .select([
-            ds.campos.valor,
-            ds.campos.modalidad,
-            ds.campos.proveedor,
-            ds.campos.fecha_firma,
-            ds.campos.estado,
-          ]);
+        const q = new SoQLBuilder().select([
+          ds.campos.valor,
+          ds.campos.modalidad,
+          ds.campos.proveedor,
+          ds.campos.fecha_firma,
+          ds.campos.estado,
+        ]);
 
         q.like(ds.campos.entidad, args.nombre_entidad);
         if (args.anio) {
@@ -296,23 +294,22 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
   server.registerTool(
     "top_proveedores",
     {
-      title: "Top Proveedores",
+      title: "Contratos para Análisis de Proveedores",
       description:
-        "Obtiene contratos para generar un ranking de proveedores. Devuelve datos crudos ordenados por valor para que el LLM pueda calcular el ranking.",
+        "Obtiene contratos crudos que permiten analizar y clasificar proveedores. Devuelve registros individuales de contratos para que el LLM pueda calcular rankings, totales y estadísticas por proveedor del lado del cliente.",
       inputSchema: topProveedoresSchema,
       annotations: TOOL_ANNOTATIONS,
     },
     async (args): Promise<CallToolResult> => {
       try {
         const ds = DATASETS.contratos;
-        const q = new SoQLBuilder()
-          .select([
-            ds.campos.proveedor,
-            ds.campos.documento_proveedor,
-            ds.campos.valor,
-            ds.campos.entidad,
-            ds.campos.fecha_firma,
-          ]);
+        const q = new SoQLBuilder().select([
+          ds.campos.proveedor,
+          ds.campos.documento_proveedor,
+          ds.campos.valor,
+          ds.campos.entidad,
+          ds.campos.fecha_firma,
+        ]);
 
         if (args.entidad) q.like(ds.campos.entidad, args.entidad);
         if (args.departamento) q.equals(ds.campos.departamento, args.departamento);

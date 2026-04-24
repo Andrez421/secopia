@@ -33,7 +33,7 @@ services:
   # Upstash-compatible HTTP proxy for @upstash/redis SDK
   # Wraps native Redis with REST API that the Upstash SDK expects
   serverless-redis-http:
-    image: hiett/serverless-redis-http:latest
+    image: hiett/serverless-redis-http:0.1.2
     ports:
       - "8079:80"
     environment:

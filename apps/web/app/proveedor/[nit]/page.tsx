@@ -11,13 +11,15 @@
  *  5. Contract list  — chronological history with ContractCard
  */
 
-import { notFound } from "next/navigation";
-import type { Metadata } from "next";
-import { SoQLBuilder, DATASETS } from "@secopia/socrata-client";
-import type { ContratoSECOP2 } from "@secopia/types";
-import { getSocrataClient } from "@/lib/socrata";
 import { ContractCard } from "@/components/contract/contract-card";
+import { deriveCompanyType, isActive } from "@/lib/provider-utils";
+import { getSocrataClient } from "@/lib/socrata";
 import { formatCOP, formatDate } from "@/lib/utils";
+import { DATASETS, SoQLBuilder } from "@secopia/socrata-client";
+import type { ContratoSECOP2 } from "@secopia/types";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 
 // ISR: revalidate every hour
 export const revalidate = 3600;
@@ -50,9 +52,17 @@ interface ProviderStats {
   departamentos: string[];
   modalidades: Record<string, number>;
   estados: Record<string, number>;
-  contractsWithValue: { id: string; valor: number; pagado: number; pendiente: number; entidad: string; fecha: string }[];
+  contractsWithValue: {
+    id: string;
+    valor: number;
+    pagado: number;
+    pendiente: number;
+    entidad: string;
+    fecha: string;
+  }[];
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: statistical aggregation
 function computeStats(contracts: ContratoSECOP2[]): ProviderStats {
   let totalValor = 0;
   let totalPagado = 0;
@@ -75,7 +85,8 @@ function computeStats(contracts: ContratoSECOP2[]): ProviderStats {
     if (c.nombre_entidad) entidadesSet.add(c.nombre_entidad);
     if (c.departamento) departamentosSet.add(c.departamento);
     if (c.modalidad_de_contratacion) {
-      modalidades[c.modalidad_de_contratacion] = (modalidades[c.modalidad_de_contratacion] ?? 0) + 1;
+      modalidades[c.modalidad_de_contratacion] =
+        (modalidades[c.modalidad_de_contratacion] ?? 0) + 1;
     }
     if (c.estado_contrato) {
       estados[c.estado_contrato] = (estados[c.estado_contrato] ?? 0) + 1;
@@ -105,24 +116,6 @@ function computeStats(contracts: ContratoSECOP2[]): ProviderStats {
   };
 }
 
-function deriveCompanyType(contracts: ContratoSECOP2[]): string {
-  const tipodoc = contracts[0]?.tipodocproveedor;
-  if (!tipodoc) return "No especificado";
-  const t = tipodoc.toLowerCase();
-  if (t.includes("nit")) return "Persona Jurídica";
-  if (t.includes("cédula") || t.includes("cedula")) return "Persona Natural Colombiana";
-  if (t.includes("pasaporte")) return "Persona Natural Extranjera";
-  return tipodoc;
-}
-
-function isActive(contracts: ContratoSECOP2[]): boolean {
-  return contracts.some(
-    (c) =>
-      c.estado_contrato?.toLowerCase().includes("ejecuci") ||
-      c.estado_contrato?.toLowerCase() === "activo",
-  );
-}
-
 // ─── Metadata ─────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -138,6 +131,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // ─── Page ─────────────────────────────────────────────────────────
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: page component with data fetching and sections
 export default async function ProveedorPage({ params }: PageProps) {
   const { nit } = await params;
   const decodedNit = decodeURIComponent(nit);
@@ -148,7 +142,7 @@ export default async function ProveedorPage({ params }: PageProps) {
   const first = contracts[0] as ContratoSECOP2;
   const nombre = first.proveedor_adjudicado ?? `NIT ${decodedNit}`;
   const stats = computeStats(contracts);
-  const companyType = deriveCompanyType(contracts);
+  const companyType = deriveCompanyType(contracts[0]?.tipodocproveedor);
   const active = isActive(contracts);
   const location = [first.ciudad, first.departamento].filter(Boolean).join(", ");
   const codigoProveedor = first.codigo_proveedor;
@@ -164,9 +158,9 @@ export default async function ProveedorPage({ params }: PageProps) {
     <div className="mx-auto max-w-5xl px-4 py-8">
       {/* Breadcrumb */}
       <div className="mb-6">
-        <a href="/buscar" className="text-sm text-[var(--color-primary)] hover:underline">
+        <Link href="/buscar" className="text-sm text-[var(--color-primary)] hover:underline">
           ← Volver a búsqueda
-        </a>
+        </Link>
       </div>
 
       {/* ── 1. HEADER ─────────────────────────────────────── */}
@@ -174,8 +168,20 @@ export default async function ProveedorPage({ params }: PageProps) {
         {/* Top row */}
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
           <span className="flex items-center gap-1">
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            <svg
+              role="img"
+              aria-label="Proveedor"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+              />
             </svg>
             Proveedor / Contratista
           </span>
@@ -187,7 +193,9 @@ export default async function ProveedorPage({ params }: PageProps) {
                 : "bg-[var(--color-accent)] text-[var(--color-muted)]"
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-[var(--color-muted)]"}`} />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-[var(--color-muted)]"}`}
+            />
             {active ? "Proveedor Activo" : "Sin contratos activos"}
           </span>
 
@@ -200,35 +208,91 @@ export default async function ProveedorPage({ params }: PageProps) {
         {/* NIT + Location + Version */}
         <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-[var(--color-muted)]">
           <span className="flex items-center gap-1">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0" />
+            <svg
+              role="img"
+              aria-label="Identificación"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0"
+              />
             </svg>
             NIT: <strong className="text-[var(--color-foreground)]">{decodedNit}</strong>
           </span>
 
           {location && (
             <span className="flex items-center gap-1">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg
+                role="img"
+                aria-label="Ubicación"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                />
               </svg>
               {location.toUpperCase()}
             </span>
           )}
 
           <span className="flex items-center gap-1">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              role="img"
+              aria-label="Calendario"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
-            Versión: <span className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs">Estás viendo lo último</span>
+            Versión:{" "}
+            <span className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs">
+              Estás viendo lo último
+            </span>
           </span>
         </div>
 
         {/* Company type + status */}
         <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-muted)]">
           <span className="flex items-center gap-1">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg
+              role="img"
+              aria-label="Tipo de empresa"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
             Tipo de empresa:
             <span className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs">
@@ -237,22 +301,31 @@ export default async function ProveedorPage({ params }: PageProps) {
           </span>
 
           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              role="img"
+              aria-label="Estado"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             Registro Activo
           </span>
 
-          {repNombre && (
-            <span className="text-[var(--color-muted)]">· Contacto disponible</span>
-          )}
+          {repNombre && <span className="text-[var(--color-muted)]">· Contacto disponible</span>}
         </div>
       </div>
 
       {/* ── GRID: Left column (main) + Right column (sidebar) ── */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-
           {/* ── 2. CONTACT INFO ────────────────────────────── */}
           {(location || repNombre) && (
             <Section title="Información de Contacto" icon="contact">
@@ -271,7 +344,9 @@ export default async function ProveedorPage({ params }: PageProps) {
 
                 {repDoc && repDoc !== "Sin Descripcion" && (
                   <InfoField label="Identificación" icon="id">
-                    <span className="font-medium">{repTipoDoc !== "Sin Descripcion" ? repTipoDoc : "Documento"}: {repDoc}</span>
+                    <span className="font-medium">
+                      {repTipoDoc !== "Sin Descripcion" ? repTipoDoc : "Documento"}: {repDoc}
+                    </span>
                   </InfoField>
                 )}
 
@@ -295,7 +370,8 @@ export default async function ProveedorPage({ params }: PageProps) {
                 {repDoc && repDoc !== "Sin Descripcion" && (
                   <InfoField label="Identificación">
                     <span className="font-medium">
-                      {repTipoDoc && repTipoDoc !== "Sin Descripcion" ? repTipoDoc : "Documento"}: {repDoc}
+                      {repTipoDoc && repTipoDoc !== "Sin Descripcion" ? repTipoDoc : "Documento"}:{" "}
+                      {repDoc}
                     </span>
                   </InfoField>
                 )}
@@ -304,7 +380,10 @@ export default async function ProveedorPage({ params }: PageProps) {
           )}
 
           {/* ── 4. TOTAL PAGADO ────────────────────────────── */}
-          <Section title="Total pagado" subtitle={`Acumulado de los últimos ${contracts.length} contratos: ${formatCOP(stats.totalPagado)}`}>
+          <Section
+            title="Total pagado"
+            subtitle={`Acumulado de los últimos ${contracts.length} contratos: ${formatCOP(stats.totalPagado)}`}
+          >
             <BarChart
               items={stats.contractsWithValue}
               valueKey="pagado"
@@ -314,7 +393,10 @@ export default async function ProveedorPage({ params }: PageProps) {
           </Section>
 
           {/* ── 5. PENDIENTE POR PAGAR ─────────────────────── */}
-          <Section title="Pendiente por pagar" subtitle={`Acumulado de los últimos ${contracts.length} contratos: ${formatCOP(stats.totalPendiente)}`}>
+          <Section
+            title="Pendiente por pagar"
+            subtitle={`Acumulado de los últimos ${contracts.length} contratos: ${formatCOP(stats.totalPendiente)}`}
+          >
             <BarChart
               items={stats.contractsWithValue}
               valueKey="pendiente"
@@ -323,19 +405,25 @@ export default async function ProveedorPage({ params }: PageProps) {
               secondaryLabel="Histórico adjudicado"
             />
           </Section>
-
         </div>
 
         {/* ── RIGHT SIDEBAR ───────────────────────────────── */}
         <div className="space-y-6">
-
           {/* Summary stats */}
           <Section title="Resumen">
             <dl className="space-y-3 text-sm">
               <StatRow label="Contratos totales" value={String(contracts.length)} />
               <StatRow label="Valor total adjudicado" value={formatCOP(stats.totalValor)} />
-              <StatRow label="Total pagado" value={formatCOP(stats.totalPagado)} highlight="green" />
-              <StatRow label="Pendiente por pagar" value={formatCOP(stats.totalPendiente)} highlight="amber" />
+              <StatRow
+                label="Total pagado"
+                value={formatCOP(stats.totalPagado)}
+                highlight="green"
+              />
+              <StatRow
+                label="Pendiente por pagar"
+                value={formatCOP(stats.totalPendiente)}
+                highlight="amber"
+              />
               <StatRow label="Entidades contratantes" value={String(stats.entidades.length)} />
               <StatRow label="Departamentos" value={String(stats.departamentos.length)} />
             </dl>
@@ -343,22 +431,17 @@ export default async function ProveedorPage({ params }: PageProps) {
 
           {/* Registro */}
           <Section title="Registro" icon="calendar">
-            <p className="text-xs text-[var(--color-muted)]">
-              Primer contrato registrado en SECOP
-            </p>
+            <p className="text-xs text-[var(--color-muted)]">Primer contrato registrado en SECOP</p>
             {contracts.at(-1)?.fecha_de_firma && (
-              <p className="mt-1 font-semibold">
-                {formatDate(contracts.at(-1)!.fecha_de_firma!)}
-              </p>
+              <p className="mt-1 font-semibold">{formatDate(contracts.at(-1)?.fecha_de_firma)}</p>
             )}
           </Section>
 
           {/* Perfil de contratista */}
           <Section title="Perfil de Contratista" icon="briefcase">
             <p className="text-xs text-[var(--color-muted)]">
-              Este proveedor está registrado para participar en procesos de contratación
-              estatal bajo la modalidad de{" "}
-              <strong>{companyType}</strong>.
+              Este proveedor está registrado para participar en procesos de contratación estatal
+              bajo la modalidad de <strong>{companyType}</strong>.
             </p>
           </Section>
 
@@ -384,18 +467,16 @@ export default async function ProveedorPage({ params }: PageProps) {
               <ul className="space-y-1.5 text-xs text-[var(--color-muted)]">
                 {stats.entidades.slice(0, 5).map((e) => (
                   <li key={e}>
-                    <a
+                    <Link
                       href={`/entidad/${encodeURIComponent(e)}`}
                       className="hover:text-[var(--color-primary)] hover:underline"
                     >
                       {e}
-                    </a>
+                    </Link>
                   </li>
                 ))}
                 {stats.entidades.length > 5 && (
-                  <li className="text-[var(--color-muted)]">
-                    +{stats.entidades.length - 5} más
-                  </li>
+                  <li className="text-[var(--color-muted)]">+{stats.entidades.length - 5} más</li>
                 )}
               </ul>
             </Section>
@@ -436,30 +517,76 @@ function Section({
       <div className="mb-4">
         <h3 className="flex items-center gap-2 font-semibold">
           {icon === "contact" && (
-            <svg className="h-4 w-4 text-[var(--color-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            <svg
+              role="img"
+              aria-label="Contacto"
+              className="h-4 w-4 text-[var(--color-muted)]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
             </svg>
           )}
           {icon === "person" && (
-            <svg className="h-4 w-4 text-[var(--color-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            <svg
+              role="img"
+              aria-label="Persona"
+              className="h-4 w-4 text-[var(--color-muted)]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
             </svg>
           )}
           {icon === "calendar" && (
-            <svg className="h-4 w-4 text-[var(--color-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <svg
+              role="img"
+              aria-label="Calendario"
+              className="h-4 w-4 text-[var(--color-muted)]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
           )}
           {icon === "briefcase" && (
-            <svg className="h-4 w-4 text-[var(--color-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            <svg
+              role="img"
+              aria-label="Perfil"
+              className="h-4 w-4 text-[var(--color-muted)]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              />
             </svg>
           )}
           {title}
         </h3>
-        {subtitle && (
-          <p className="mt-0.5 text-xs text-[var(--color-muted)]">{subtitle}</p>
-        )}
+        {subtitle && <p className="mt-0.5 text-xs text-[var(--color-muted)]">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -479,18 +606,54 @@ function InfoField({
     <div>
       <dt className="mb-0.5 flex items-center gap-1 text-xs uppercase tracking-wide text-[var(--color-muted)]">
         {icon === "pin" && (
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <svg
+            role="img"
+            aria-label="Ubicación"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+            />
           </svg>
         )}
         {icon === "id" && (
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1" />
+          <svg
+            role="img"
+            aria-label="Identificación"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1"
+            />
           </svg>
         )}
         {icon === "person" && (
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          <svg
+            role="img"
+            aria-label="Persona"
+            className="h-3 w-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"
+            />
           </svg>
         )}
         {label}

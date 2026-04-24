@@ -18,10 +18,7 @@ const limitParam = z
 
 /** Common search parameters shared across multiple tools */
 const baseSearchParams = {
-  entidad: z
-    .string()
-    .optional()
-    .describe("Nombre parcial o completo de la entidad contratante"),
+  entidad: z.string().optional().describe("Nombre parcial o completo de la entidad contratante"),
   departamento: z
     .string()
     .optional()
@@ -33,22 +30,13 @@ const baseSearchParams = {
 
 export const buscarContratosSchema = z.object({
   ...baseSearchParams,
-  proveedor: z
-    .string()
-    .optional()
-    .describe("Nombre parcial o completo del proveedor/contratista"),
+  proveedor: z.string().optional().describe("Nombre parcial o completo del proveedor/contratista"),
   modalidad: z
     .string()
     .optional()
     .describe("Modalidad de contratación (ej: Contratación Directa, Licitación Pública)"),
-  valor_min: z
-    .number()
-    .optional()
-    .describe("Valor mínimo del contrato en pesos colombianos (COP)"),
-  valor_max: z
-    .number()
-    .optional()
-    .describe("Valor máximo del contrato en pesos colombianos (COP)"),
+  valor_min: z.number().optional().describe("Valor mínimo del contrato en pesos colombianos (COP)"),
+  valor_max: z.number().optional().describe("Valor máximo del contrato en pesos colombianos (COP)"),
   fecha_inicio: z
     .string()
     .optional()
@@ -61,83 +49,41 @@ export const buscarContratosSchema = z.object({
 
 export const buscarProcesosSchema = z.object({
   ...baseSearchParams,
-  descripcion: z
-    .string()
-    .optional()
-    .describe("Texto a buscar en la descripción del proceso"),
+  descripcion: z.string().optional().describe("Texto a buscar en la descripción del proceso"),
 });
 
 export const buscarSecop1Schema = z.object({
   ...baseSearchParams,
-  objeto: z
-    .string()
-    .optional()
-    .describe("Texto a buscar en el objeto a contratar"),
+  objeto: z.string().optional().describe("Texto a buscar en el objeto a contratar"),
 });
 
 export const buscarProveedoresSchema = z.object({
-  nombre: z
-    .string()
-    .optional()
-    .describe("Nombre parcial o completo del proveedor"),
-  nit: z
-    .string()
-    .optional()
-    .describe("NIT del proveedor (sin dígito de verificación)"),
-  departamento: z
-    .string()
-    .optional()
-    .describe("Departamento donde opera el proveedor"),
+  nombre: z.string().optional().describe("Nombre parcial o completo del proveedor"),
+  nit: z.string().optional().describe("NIT del proveedor (sin dígito de verificación)"),
+  departamento: z.string().optional().describe("Departamento donde opera el proveedor"),
   limite: limitParam,
 });
 
 export const detalleContratoSchema = z.object({
-  id_contrato: z
-    .string()
-    .optional()
-    .describe("ID del contrato en SECOP II"),
-  id_portafolio: z
-    .string()
-    .optional()
-    .describe("ID del portafolio del contrato"),
+  id_contrato: z.string().optional().describe("ID del contrato en SECOP II"),
+  id_portafolio: z.string().optional().describe("ID del portafolio del contrato"),
 });
 
 export const historialProveedorSchema = z.object({
-  nit: z
-    .string()
-    .describe("NIT del proveedor (sin dígito de verificación)"),
-  fecha_inicio: z
-    .string()
-    .optional()
-    .describe("Fecha desde la cual buscar contratos (YYYY-MM-DD)"),
+  nit: z.string().describe("NIT del proveedor (sin dígito de verificación)"),
+  fecha_inicio: z.string().optional().describe("Fecha desde la cual buscar contratos (YYYY-MM-DD)"),
   limite: limitParam,
 });
 
 export const estadisticasEntidadSchema = z.object({
-  nombre_entidad: z
-    .string()
-    .describe("Nombre de la entidad contratante"),
-  anio: z
-    .number()
-    .int()
-    .optional()
-    .describe("Año para filtrar estadísticas (ej: 2024)"),
+  nombre_entidad: z.string().describe("Nombre de la entidad contratante"),
+  anio: z.number().int().optional().describe("Año para filtrar estadísticas (ej: 2024)"),
 });
 
 export const topProveedoresSchema = z.object({
-  entidad: z
-    .string()
-    .optional()
-    .describe("Filtrar por entidad contratante"),
-  departamento: z
-    .string()
-    .optional()
-    .describe("Filtrar por departamento"),
-  anio: z
-    .number()
-    .int()
-    .optional()
-    .describe("Filtrar por año"),
+  entidad: z.string().optional().describe("Filtrar por entidad contratante"),
+  departamento: z.string().optional().describe("Filtrar por departamento"),
+  anio: z.number().int().optional().describe("Filtrar por año"),
   limite: z
     .number()
     .int()

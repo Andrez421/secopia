@@ -2,7 +2,7 @@
  * Shared utilities for the web app.
  */
 
-import { clsx, type ClassValue } from "clsx";
+import { type ClassValue, clsx } from "clsx";
 
 /**
  * Merge Tailwind CSS class names with conflict resolution.
@@ -40,6 +40,7 @@ export function formatDate(value: string | undefined): string {
       day: "numeric",
       month: "short",
       year: "numeric",
+      timeZone: "America/Bogota",
     }).format(date);
   } catch {
     return value;

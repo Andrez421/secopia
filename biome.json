@@ -41,13 +41,6 @@
     }
   },
   "files": {
-    "ignore": [
-      "node_modules",
-      "dist",
-      ".next",
-      ".turbo",
-      "coverage",
-      "*.min.js"
-    ]
+    "ignore": ["node_modules", "dist", ".next", ".turbo", "coverage", "*.min.js"]
   }
 }

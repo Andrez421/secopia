@@ -5,11 +5,11 @@
  * Renders SearchBar + SearchFilters + SearchResults.
  */
 
-import { Suspense } from "react";
-import type { Metadata } from "next";
-import { SearchBar } from "@/components/search/search-bar";
 import { SearchFilters } from "@/components/search/search-filters";
 import { SearchResults } from "@/components/search/search-results";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { SearchBarWrapper } from "./search-bar-wrapper";
 
 export const metadata: Metadata = {
   title: "Buscar Contratos",
@@ -21,7 +21,7 @@ export default function BuscarPage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="space-y-4">
         <Suspense>
-          <SearchBar />
+          <SearchBarWrapper />
         </Suspense>
 
         <Suspense>
@@ -35,6 +35,7 @@ export default function BuscarPage() {
             <div className="space-y-4 py-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
                   key={`skeleton-${i}`}
                   className="h-32 animate-pulse rounded-lg bg-[var(--color-border)]"
                 />

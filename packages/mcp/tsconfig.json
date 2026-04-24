@@ -6,8 +6,5 @@
     "outDir": "dist"
   },
   "include": ["src", "bin"],
-  "references": [
-    { "path": "../types" },
-    { "path": "../socrata-client" }
-  ]
+  "references": [{ "path": "../types" }, { "path": "../socrata-client" }]
 }

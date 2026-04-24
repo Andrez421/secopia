@@ -16,9 +16,9 @@
  * Designed to run as a cron job (every 30 minutes) or GitHub Action.
  */
 
-import Typesense from "typesense";
-import { SocrataClient, SoQLBuilder, DATASETS } from "@secopia/socrata-client";
+import { DATASETS, SoQLBuilder, SocrataClient } from "@secopia/socrata-client";
 import type { ContratoSECOP2 } from "@secopia/types";
+import Typesense from "typesense";
 
 // ─── Configuration ──────────────────────────────────────────────
 
@@ -63,10 +63,14 @@ function toFloat(value: string | undefined): number | undefined {
 }
 
 function transformContract(c: ContratoSECOP2) {
-  const url =
-    typeof c.urlproceso === "object" ? c.urlproceso?.url : c.urlproceso;
+  const url = typeof c.urlproceso === "object" ? c.urlproceso?.url : c.urlproceso;
+  const fallbackId =
+    c.id_contrato ||
+    (c.nit_entidad && c.fecha_de_firma
+      ? `${c.nit_entidad}-${c.fecha_de_firma}-${c.documento_proveedor ?? "no-doc"}`
+      : crypto.randomUUID());
   return {
-    id: c.id_contrato || `${c.nit_entidad}-${c.fecha_de_firma}`,
+    id: fallbackId,
     id_contrato: c.id_contrato ?? "",
     nombre_entidad: c.nombre_entidad ?? "",
     nit_entidad: c.nit_entidad,
@@ -82,6 +86,35 @@ function transformContract(c: ContratoSECOP2) {
     fecha_de_firma: toTimestamp(c.fecha_de_firma),
     urlproceso: url ?? "",
   };
+}
+
+async function importWithRetry(
+  ts: Typesense.Client,
+  documents: ReturnType<typeof transformContract>[],
+): Promise<{ successes: number; failures: number }> {
+  const delays = [1000, 2000, 4000];
+
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const result = await ts
+        .collections(COLLECTION_NAME)
+        .documents()
+        .import(documents, { action: "upsert" });
+
+      const successes = result.filter((r) => r.success).length;
+      const failures = result.filter((r) => !r.success).length;
+      return { successes, failures };
+    } catch (error) {
+      if (attempt === delays.length) throw error;
+      console.warn(
+        `  ⚠️  Import attempt ${attempt + 1} failed, retrying in ${delays[attempt]}ms...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+
+  // Unreachable, but satisfies TypeScript
+  throw new Error("Import failed after all retries");
 }
 
 // ─── Main ────────────────────────────────────────────────────────
@@ -116,7 +149,7 @@ async function main() {
   } catch {
     console.log(`📦 Creating collection "${COLLECTION_NAME}"...`);
     await ts.collections().create(SCHEMA);
-    console.log(`✅ Collection created`);
+    console.log("✅ Collection created");
   }
 
   // ── 2. Fetch and upsert in batches ──────────────────────
@@ -126,7 +159,7 @@ async function main() {
   let totalUpserted = 0;
   let hasMore = true;
 
-  console.log(`\n🔄 Starting sync from Socrata → Typesense...`);
+  console.log("\n🔄 Starting sync from Socrata → Typesense...");
 
   while (hasMore && offset < MAX_RECORDS) {
     const q = new SoQLBuilder()
@@ -142,34 +175,22 @@ async function main() {
       break;
     }
 
-    const documents = batch
-      .map(transformContract)
-      .filter((d) => d.id); // Skip documents without an ID
+    const documents = batch.map(transformContract).filter((d) => d.id); // Skip documents without an ID
 
     try {
-      const result = await ts
-        .collections(COLLECTION_NAME)
-        .documents()
-        .import(documents, { action: "upsert" });
-
-      const successes = result.filter((r) => r.success).length;
-      const failures = result.filter((r) => !r.success).length;
+      const { successes, failures } = await importWithRetry(ts, documents);
 
       totalUpserted += successes;
 
       if (failures > 0) {
-        console.warn(
-          `  ⚠️  Batch at offset ${offset}: ${successes} ok, ${failures} failed`,
-        );
+        console.warn(`  ⚠️  Batch at offset ${offset}: ${successes} ok, ${failures} failed`);
       }
     } catch (error) {
-      console.error(`  ❌ Batch import failed at offset ${offset}:`, error);
+      console.error(`  ❌ Batch import failed at offset ${offset} after retries:`, error);
     }
 
     offset += batch.length;
-    process.stdout.write(
-      `\r  📥 Processed: ${offset} records (${totalUpserted} upserted)`,
-    );
+    process.stdout.write(`\r  📥 Processed: ${offset} records (${totalUpserted} upserted)`);
 
     // Respect Socrata rate limits
     if (batch.length === BATCH_SIZE) {

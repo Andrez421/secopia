@@ -7,19 +7,10 @@
  * TTL: 10 minutes for search results (SECOP data doesn't change frequently).
  */
 
-import { Redis } from "@upstash/redis";
+import { getRedis } from "./redis.js";
 
 const CACHE_TTL_SECONDS = 600; // 10 minutes
 const CACHE_PREFIX = "secopia:q";
-
-let redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (!redis) {
-    redis = Redis.fromEnv();
-  }
-  return redis;
-}
 
 /**
  * Get a cached value by key.
@@ -41,7 +32,7 @@ export async function getCached<T>(key: string): Promise<T | null> {
  */
 export async function setCached<T>(key: string, value: T): Promise<void> {
   try {
-    await getRedis().set(`${CACHE_PREFIX}:${key}`, JSON.stringify(value), {
+    await getRedis().set(`${CACHE_PREFIX}:${key}`, value, {
       ex: CACHE_TTL_SECONDS,
     });
   } catch {

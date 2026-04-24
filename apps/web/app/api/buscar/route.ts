@@ -13,13 +13,14 @@
  * - Limit/offset clamped by SoQLBuilder
  */
 
-import { type NextRequest, NextResponse } from "next/server";
-import { SoQLBuilder, DATASETS, getDataset } from "@secopia/socrata-client";
-import type { SearchResponse } from "@secopia/types";
-import { getSocrataClient } from "@/lib/socrata";
 import { getCached, setCached } from "@/lib/cache";
-import { getSearchRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { getClientIp, getSearchRateLimiter } from "@/lib/rate-limit";
+import { validateSearchParams } from "@/lib/search-validation";
+import { getSocrataClient } from "@/lib/socrata";
 import { searchContratos } from "@/lib/typesense";
+import { DATASETS, SoQLBuilder, getDataset } from "@secopia/socrata-client";
+import type { SearchResponse } from "@secopia/types";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
 
@@ -46,6 +47,7 @@ function isNumericQuery(q: string): boolean {
   return /^\d{5,15}$/.test(q.trim());
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: API handler with multiple sequential stages
 export async function GET(req: NextRequest) {
   // ── 1. Rate Limiting ────────────────────────────────────
 
@@ -78,8 +80,33 @@ export async function GET(req: NextRequest) {
     const modalidad = params.get("modalidad") ?? undefined;
     const valorMinRaw = params.get("valor_min");
     const valorMaxRaw = params.get("valor_max");
+    const validationError = validateSearchParams({
+      limite: params.get("limite"),
+      offset: params.get("offset"),
+      valorMin: valorMinRaw,
+      valorMax: valorMaxRaw,
+    });
+
+    if (validationError) {
+      return NextResponse.json(
+        { error: validationError.error },
+        { status: validationError.status },
+      );
+    }
+
     const limite = Number(params.get("limite") ?? 50);
     const offset = Number(params.get("offset") ?? 0);
+
+    if (Number.isNaN(limite) || Number.isNaN(offset)) {
+      return NextResponse.json({ error: "limite y offset deben ser números" }, { status: 400 });
+    }
+
+    if (valorMinRaw && valorMaxRaw && Number(valorMinRaw) > Number(valorMaxRaw)) {
+      return NextResponse.json(
+        { error: "valor_min no puede ser mayor que valor_max" },
+        { status: 400 },
+      );
+    }
 
     // Validate dataset type
     let ds: ReturnType<typeof getDataset>;
@@ -189,9 +216,13 @@ export async function GET(req: NextRequest) {
     const client = getSocrataClient();
     const results = await client.query(ds.id, soqlQuery);
 
+    // Socrata does not provide a total count. If we received fewer rows than
+    // requested, we know the exact total; otherwise it's unknown.
+    const exactTotal = results.length < limite ? results.length : undefined;
+
     const response: SearchResponse<unknown> = {
       items: results,
-      total: results.length,
+      total: exactTotal ?? results.length,
       query_soql: soqlQuery,
     };
 
@@ -204,8 +235,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     // Differentiated error handling
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const errorName = error instanceof Error ? error.name : "Unknown";
 
     console.error(`[api/buscar] ${errorName}: ${errorMessage}`);
@@ -218,15 +248,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (errorName === "SoQLValidationError") {
-      return NextResponse.json(
-        { error: "Parámetros de búsqueda inválidos." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Parámetros de búsqueda inválidos." }, { status: 400 });
     }
 
-    return NextResponse.json(
-      { error: "Error interno del servidor." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
   }
 }

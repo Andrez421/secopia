@@ -11,13 +11,39 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 const DEPARTAMENTOS = [
-  "AMAZONAS", "ANTIOQUIA", "ARAUCA", "ATLANTICO", "BOGOTA",
-  "BOLIVAR", "BOYACA", "CALDAS", "CAQUETA", "CASANARE",
-  "CAUCA", "CESAR", "CHOCO", "CORDOBA", "CUNDINAMARCA",
-  "GUAINIA", "GUAVIARE", "HUILA", "LA GUAJIRA", "MAGDALENA",
-  "META", "NARINO", "NORTE DE SANTANDER", "PUTUMAYO",
-  "QUINDIO", "RISARALDA", "SAN ANDRES", "SANTANDER", "SUCRE",
-  "TOLIMA", "VALLE DEL CAUCA", "VAUPES", "VICHADA",
+  "AMAZONAS",
+  "ANTIOQUIA",
+  "ARAUCA",
+  "ATLANTICO",
+  "BOGOTA",
+  "BOLIVAR",
+  "BOYACA",
+  "CALDAS",
+  "CAQUETA",
+  "CASANARE",
+  "CAUCA",
+  "CESAR",
+  "CHOCO",
+  "CORDOBA",
+  "CUNDINAMARCA",
+  "GUAINIA",
+  "GUAVIARE",
+  "HUILA",
+  "LA GUAJIRA",
+  "MAGDALENA",
+  "META",
+  "NARINO",
+  "NORTE DE SANTANDER",
+  "PUTUMAYO",
+  "QUINDIO",
+  "RISARALDA",
+  "SAN ANDRES",
+  "SANTANDER",
+  "SUCRE",
+  "TOLIMA",
+  "VALLE DEL CAUCA",
+  "VAUPES",
+  "VICHADA",
 ] as const;
 
 export function SearchFilters() {
@@ -41,6 +67,24 @@ export function SearchFilters() {
 
   return (
     <div className="flex flex-wrap gap-3">
+      {/* Entidad */}
+      <input
+        type="text"
+        placeholder="Entidad contratante"
+        value={searchParams.get("entidad") ?? ""}
+        onChange={(e) => updateParam("entidad", e.target.value)}
+        className="w-56 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+      />
+
+      {/* Proveedor */}
+      <input
+        type="text"
+        placeholder="Proveedor / contratista"
+        value={searchParams.get("proveedor") ?? ""}
+        onChange={(e) => updateParam("proveedor", e.target.value)}
+        className="w-56 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)]"
+      />
+
       {/* Departamento */}
       <select
         value={searchParams.get("departamento") ?? ""}

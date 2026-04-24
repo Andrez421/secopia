@@ -4,8 +4,9 @@
  * Pure presentational component displaying all fields of a contract.
  */
 
-import type { ContratoSECOP2 } from "@secopia/types";
 import { formatCOP, formatDate } from "@/lib/utils";
+import type { ContratoSECOP2 } from "@secopia/types";
+import Link from "next/link";
 
 interface ContractDetailProps {
   contract: ContratoSECOP2;
@@ -13,9 +14,7 @@ interface ContractDetailProps {
 
 export function ContractDetail({ contract }: ContractDetailProps) {
   const url =
-    typeof contract.urlproceso === "object"
-      ? contract.urlproceso?.url
-      : contract.urlproceso;
+    typeof contract.urlproceso === "object" ? contract.urlproceso?.url : contract.urlproceso;
 
   const fields = [
     {
@@ -56,12 +55,9 @@ export function ContractDetail({ contract }: ContractDetailProps) {
             <dt className="text-sm font-medium text-[var(--color-muted)]">{label}</dt>
             <dd className="mt-1">
               {href && value ? (
-                <a
-                  href={href}
-                  className="text-[var(--color-primary)] hover:underline"
-                >
+                <Link href={href} className="text-[var(--color-primary)] hover:underline">
                   {value}
-                </a>
+                </Link>
               ) : (
                 value || "N/A"
               )}

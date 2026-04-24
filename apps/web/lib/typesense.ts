@@ -23,9 +23,7 @@ function getTypesenseClient(): Client {
     const apiKey = process.env.TYPESENSE_API_KEY;
 
     if (!host || !apiKey) {
-      throw new Error(
-        "Missing TYPESENSE_HOST or TYPESENSE_API_KEY environment variables",
-      );
+      throw new Error("Missing TYPESENSE_HOST or TYPESENSE_API_KEY environment variables");
     }
 
     const port = Number(process.env.TYPESENSE_PORT ?? 443);
@@ -82,9 +80,7 @@ export async function searchContratos<T = Record<string, unknown>>(
       sort_by: "fecha_de_firma:desc",
     });
 
-  const items = (result.hits ?? []).map(
-    (hit: { document: unknown }) => hit.document as T,
-  );
+  const items = (result.hits ?? []).map((hit: { document: unknown }) => hit.document as T);
 
   return {
     items,

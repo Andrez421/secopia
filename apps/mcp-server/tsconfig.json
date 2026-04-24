@@ -5,7 +5,5 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../packages/mcp" }
-  ]
+  "references": [{ "path": "../../packages/mcp" }]
 }

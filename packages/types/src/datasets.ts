@@ -14,8 +14,9 @@ export interface DatasetFieldMap {
   valor: string;
   fecha_firma: string;
   modalidad: string;
+  referencia?: string;
   /** Additional fields specific to each dataset */
-  [key: string]: string;
+  [key: string]: string | undefined;
 }
 
 /** Configuration for a single Socrata dataset */

@@ -9,8 +9,9 @@
  * invalid <a> inside <a> HTML nesting.
  */
 
-import type { ContratoSECOP2 } from "@secopia/types";
 import { formatCOP, formatDate, truncate } from "@/lib/utils";
+import type { ContratoSECOP2 } from "@secopia/types";
+import Link from "next/link";
 
 interface ContractCardProps {
   contract: ContratoSECOP2;
@@ -28,10 +29,7 @@ export function ContractCard({ contract }: ContractCardProps) {
   );
 }
 
-function CardContent({
-  contract,
-  href,
-}: ContractCardProps & { href?: string }) {
+function CardContent({ contract, href }: ContractCardProps & { href?: string }) {
   return (
     <>
       {/* Header: Entity + Value */}
@@ -42,19 +40,19 @@ function CardContent({
               // Stretched link: covers the entire card via after:absolute after:inset-0
               // Inner links (entity, provider) sit above it via relative z-10
               href ? (
-                <a
+                <Link
                   href={href}
                   className="after:absolute after:inset-0 hover:text-[var(--color-primary)] hover:underline"
                 >
                   {contract.nombre_entidad}
-                </a>
+                </Link>
               ) : (
-                <a
+                <Link
                   href={`/entidad/${encodeURIComponent(contract.nombre_entidad)}`}
                   className="relative z-10 hover:text-[var(--color-primary)] hover:underline"
                 >
                   {contract.nombre_entidad}
-                </a>
+                </Link>
               )
             ) : (
               "Entidad no especificada"
@@ -62,14 +60,14 @@ function CardContent({
           </h3>
           <p className="mt-0.5 text-sm text-[var(--color-muted)]">
             {contract.proveedor_adjudicado && contract.documento_proveedor ? (
-              <a
+              <Link
                 href={`/proveedor/${encodeURIComponent(contract.documento_proveedor)}`}
                 className="relative z-10 hover:text-[var(--color-primary)] hover:underline"
               >
                 {contract.proveedor_adjudicado}
-              </a>
+              </Link>
             ) : (
-              contract.proveedor_adjudicado ?? "Proveedor no especificado"
+              (contract.proveedor_adjudicado ?? "Proveedor no especificado")
             )}
           </p>
         </div>
@@ -97,9 +95,7 @@ function CardContent({
             {contract.modalidad_de_contratacion}
           </span>
         )}
-        {contract.fecha_de_firma && (
-          <span>{formatDate(contract.fecha_de_firma)}</span>
-        )}
+        {contract.fecha_de_firma && <span>{formatDate(contract.fecha_de_firma)}</span>}
         {contract.estado_contrato && (
           <span className="rounded-md bg-[var(--color-accent)] px-2 py-0.5">
             {contract.estado_contrato}

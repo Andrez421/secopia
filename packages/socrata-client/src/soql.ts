@@ -41,10 +41,7 @@ export class SoQLBuilder {
    * Collapses consecutive hyphens (--) to prevent SQL comment syntax.
    */
   private sanitize(value: string): string {
-    return value
-      .replace(SAFE_VALUE_PATTERN, "")
-      .replace(/-{2,}/g, "-")
-      .trim();
+    return value.replace(SAFE_VALUE_PATTERN, "").replace(/-{2,}/g, "-").trim();
   }
 
   /**

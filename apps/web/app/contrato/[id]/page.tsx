@@ -5,13 +5,14 @@
  * Fetches contract data server-side for SEO.
  */
 
-import { notFound } from "next/navigation";
-import type { Metadata } from "next";
-import { SoQLBuilder, DATASETS } from "@secopia/socrata-client";
-import type { ContratoSECOP2 } from "@secopia/types";
-import { getSocrataClient } from "@/lib/socrata";
 import { ContractDetail } from "@/components/contract/contract-detail";
+import { getSocrataClient } from "@/lib/socrata";
 import { formatCOP } from "@/lib/utils";
+import { DATASETS, SoQLBuilder } from "@secopia/socrata-client";
+import type { ContratoSECOP2 } from "@secopia/types";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 
 // ISR: revalidate every hour
 export const revalidate = 3600;
@@ -22,10 +23,7 @@ interface PageProps {
 
 async function getContract(id: string): Promise<ContratoSECOP2 | null> {
   const ds = DATASETS.contratos;
-  const q = new SoQLBuilder()
-    .equals(ds.campos.id_contrato, id)
-    .limit(1)
-    .build();
+  const q = new SoQLBuilder().equals(ds.campos.id_contrato, id).limit(1).build();
 
   const client = getSocrataClient();
   const results = await client.query<ContratoSECOP2>(ds.id, q);
@@ -57,20 +55,13 @@ export default async function ContratoPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6">
-        <a
-          href="/buscar"
-          className="text-sm text-[var(--color-primary)] hover:underline"
-        >
+        <Link href="/buscar" className="text-sm text-[var(--color-primary)] hover:underline">
           ← Volver a resultados
-        </a>
+        </Link>
       </div>
 
-      <h1 className="text-2xl font-bold">
-        {contract.nombre_entidad}
-      </h1>
-      <p className="mt-1 text-[var(--color-muted)]">
-        Contrato {contract.id_contrato}
-      </p>
+      <h1 className="text-2xl font-bold">{contract.nombre_entidad}</h1>
+      <p className="mt-1 text-[var(--color-muted)]">Contrato {contract.id_contrato}</p>
 
       <div className="mt-6">
         <ContractDetail contract={contract} />

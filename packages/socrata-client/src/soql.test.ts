@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { SoQLBuilder, SoQLValidationError } from "./soql.js";
 
 describe("SoQLBuilder", () => {
@@ -46,10 +46,7 @@ describe("SoQLBuilder", () => {
     });
 
     it("rejects field names with special characters", () => {
-      assert.throws(
-        () => new SoQLBuilder().equals("field-name", "value"),
-        SoQLValidationError,
-      );
+      assert.throws(() => new SoQLBuilder().equals("field-name", "value"), SoQLValidationError);
     });
 
     it("allows valid field names with underscores", () => {
@@ -82,9 +79,7 @@ describe("SoQLBuilder", () => {
     });
 
     it("sanitizes the value for orLike", () => {
-      const query = new SoQLBuilder()
-        .orLike(["nombre_entidad"], "test'; DROP--")
-        .build();
+      const query = new SoQLBuilder().orLike(["nombre_entidad"], "test'; DROP--").build();
       assert.match(query, /TEST DROP/);
       assert.doesNotMatch(query, /;/);
       assert.doesNotMatch(query, /--/);

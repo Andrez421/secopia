@@ -93,9 +93,7 @@ export type DatasetKey = keyof typeof DATASETS;
  */
 export function getDataset(key: string): DatasetConfig {
   if (!(key in DATASETS)) {
-    throw new Error(
-      `Unknown dataset: "${key}". Available: ${Object.keys(DATASETS).join(", ")}`,
-    );
+    throw new Error(`Unknown dataset: "${key}". Available: ${Object.keys(DATASETS).join(", ")}`);
   }
   return DATASETS[key as DatasetKey];
 }

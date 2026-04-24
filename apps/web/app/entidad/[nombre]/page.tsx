@@ -5,13 +5,14 @@
  * Shows all contracts associated with a government entity.
  */
 
-import { notFound } from "next/navigation";
-import type { Metadata } from "next";
-import { SoQLBuilder, DATASETS } from "@secopia/socrata-client";
-import type { ContratoSECOP2 } from "@secopia/types";
-import { getSocrataClient } from "@/lib/socrata";
 import { ContractCard } from "@/components/contract/contract-card";
+import { getSocrataClient } from "@/lib/socrata";
 import { formatCOP } from "@/lib/utils";
+import { DATASETS, SoQLBuilder } from "@secopia/socrata-client";
+import type { ContratoSECOP2 } from "@secopia/types";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
 
 // ISR: revalidate every hour
 export const revalidate = 3600;
@@ -82,12 +83,9 @@ export default async function EntidadPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6">
-        <a
-          href="/buscar"
-          className="text-sm text-[var(--color-primary)] hover:underline"
-        >
+        <Link href="/buscar" className="text-sm text-[var(--color-primary)] hover:underline">
           ← Volver a búsqueda
-        </a>
+        </Link>
       </div>
 
       {/* Header */}
@@ -108,9 +106,7 @@ export default async function EntidadPage({ params }: PageProps) {
       </div>
 
       {/* Contract List */}
-      <h2 className="mb-4 text-lg font-semibold">
-        Contratos ({contracts.length})
-      </h2>
+      <h2 className="mb-4 text-lg font-semibold">Contratos ({contracts.length})</h2>
       <div className="space-y-3">
         {contracts.map((contract, i) => (
           <ContractCard key={contract.id_contrato ?? i} contract={contract} />

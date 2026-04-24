@@ -17,8 +17,8 @@
  * - Cleanup happens automatically when clients disconnect
  */
 
-import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createSecopiaServer } from "@secopia/mcp";
@@ -28,6 +28,11 @@ import { createSecopiaServer } from "@secopia/mcp";
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_SESSIONS = 1000;
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
 // ─── MCP Server ─────────────────────────────────────────────
 
 const mcpServer = createSecopiaServer({
@@ -36,14 +41,25 @@ const mcpServer = createSecopiaServer({
 
 // ─── Session Management ─────────────────────────────────────
 
-/** Active transport sessions indexed by session ID */
-const sessions = new Map<string, StreamableHTTPServerTransport>();
+interface SessionEntry {
+  transport: StreamableHTTPServerTransport;
+  lastActivity: number;
+}
 
-/** Read the full request body as a parsed JSON object */
-async function readBody(req: NodeJS.ReadableStream): Promise<unknown> {
+/** Active transport sessions indexed by session ID */
+const sessions = new Map<string, SessionEntry>();
+
+/** Read the full request body as a parsed JSON object, rejecting if it exceeds maxSize */
+async function readBody(req: NodeJS.ReadableStream, maxSize: number): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let totalSize = 0;
   for await (const chunk of req) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : (chunk as Buffer));
+    const buffer = typeof chunk === "string" ? Buffer.from(chunk) : (chunk as Buffer);
+    totalSize += buffer.length;
+    if (totalSize > maxSize) {
+      throw new Error("PAYLOAD_TOO_LARGE");
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf-8");
   return JSON.parse(raw);
@@ -56,10 +72,7 @@ function setCorsHeaders(res: import("node:http").ServerResponse): void {
     "Access-Control-Allow-Headers",
     "Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
   );
-  res.setHeader(
-    "Access-Control-Expose-Headers",
-    "Mcp-Session-Id, Mcp-Protocol-Version",
-  );
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id, Mcp-Protocol-Version");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
 }
 
@@ -75,6 +88,7 @@ function jsonResponse(
 
 // ─── HTTP Server ────────────────────────────────────────────
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: HTTP handler with sequential stages
 const httpServer = createServer(async (req, res) => {
   setCorsHeaders(res);
 
@@ -98,22 +112,32 @@ const httpServer = createServer(async (req, res) => {
   // MCP endpoint
   if (req.url === "/mcp" && req.method === "POST") {
     try {
-      const body = await readBody(req);
+      const body = await readBody(req, MAX_BODY_SIZE);
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
       // Case 1: Existing session — reuse transport
-      if (sessionId && sessions.has(sessionId)) {
-        const transport = sessions.get(sessionId)!;
-        await transport.handleRequest(req, res, body);
-        return;
+      if (sessionId) {
+        const entry = sessions.get(sessionId);
+        if (entry) {
+          entry.lastActivity = Date.now();
+          await entry.transport.handleRequest(req, res, body);
+          return;
+        }
       }
 
       // Case 2: New session — must be an Initialize request
       if (!sessionId && isInitializeRequest(body)) {
+        if (sessions.size >= MAX_SESSIONS) {
+          jsonResponse(res, 429, {
+            error: "Too many active sessions. Please try again later.",
+          });
+          return;
+        }
+
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid) => {
-            sessions.set(sid, transport);
+            sessions.set(sid, { transport, lastActivity: Date.now() });
             console.log(`[session:new] ${sid} (active: ${sessions.size})`);
           },
         });
@@ -122,15 +146,13 @@ const httpServer = createServer(async (req, res) => {
         transport.onclose = () => {
           if (transport.sessionId) {
             sessions.delete(transport.sessionId);
-            console.log(
-              `[session:closed] ${transport.sessionId} (active: ${sessions.size})`,
-            );
+            console.log(`[session:closed] ${transport.sessionId} (active: ${sessions.size})`);
           }
         };
 
         // Cleanup on client disconnect
         res.on("close", () => {
-          if (transport.sessionId && !sessions.has(transport.sessionId)) {
+          if (transport.sessionId && sessions.has(transport.sessionId)) {
             transport.close();
           }
         });
@@ -142,9 +164,14 @@ const httpServer = createServer(async (req, res) => {
 
       // Case 3: Invalid request
       jsonResponse(res, 400, {
-        error: "Invalid request. Send an Initialize request without Mcp-Session-Id to start a new session.",
+        error:
+          "Invalid request. Send an Initialize request without Mcp-Session-Id to start a new session.",
       });
     } catch (error) {
+      if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE") {
+        jsonResponse(res, 413, { error: "Payload too large. Maximum body size is 10 MB." });
+        return;
+      }
       console.error("[mcp:error]", error);
       jsonResponse(res, 500, {
         error: "Internal server error processing MCP request.",
@@ -157,12 +184,33 @@ const httpServer = createServer(async (req, res) => {
   jsonResponse(res, 404, { error: "Not found" });
 });
 
+// ─── Periodic Cleanup ───────────────────────────────────────
+
+setInterval(() => {
+  const now = Date.now();
+  let evicted = 0;
+  for (const [sid, entry] of sessions) {
+    if (now - entry.lastActivity > SESSION_TTL_MS) {
+      entry.transport.close();
+      sessions.delete(sid);
+      evicted++;
+    }
+  }
+  if (evicted > 0) {
+    console.log(
+      `[session:cleanup] Evicted ${evicted} inactive sessions (active: ${sessions.size})`,
+    );
+  }
+}, SESSION_CLEANUP_INTERVAL_MS);
+
 // ─── Start ──────────────────────────────────────────────────
 
 httpServer.listen(PORT, HOST, () => {
-  console.log(`\n  🔍 Secopia MCP Server`);
-  console.log(`  ─────────────────────`);
+  console.log("\n  🔍 Secopia MCP Server");
+  console.log("  ─────────────────────");
   console.log(`  Health:  http://${HOST}:${PORT}/health`);
   console.log(`  MCP:     http://${HOST}:${PORT}/mcp`);
-  console.log(`  Token:   ${process.env.SOCRATA_APP_TOKEN ? "configured ✓" : "not set (60 req/hr limit)"}\n`);
+  console.log(
+    `  Token:   ${process.env.SOCRATA_APP_TOKEN ? "configured ✓" : "not set (60 req/hr limit)"}\n`,
+  );
 });

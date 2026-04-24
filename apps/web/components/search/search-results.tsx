@@ -12,12 +12,12 @@
  * since the user is clearly looking up a specific person/company.
  */
 
+import { ContractCard } from "@/components/contract/contract-card";
+import { ProviderCard } from "@/components/contract/provider-card";
+import type { ContratoSECOP2, SearchResponse } from "@secopia/types";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
-import { ContractCard } from "@/components/contract/contract-card";
-import { ProviderCard } from "@/components/contract/provider-card";
-import type { SearchResponse, ContratoSECOP2 } from "@secopia/types";
 
 const PAGE_SIZE = 20;
 
@@ -26,9 +26,7 @@ async function fetchResults(
   offset: number,
 ): Promise<SearchResponse<ContratoSECOP2>> {
   const separator = params ? "&" : "";
-  const res = await fetch(
-    `/api/buscar?${params}${separator}limite=${PAGE_SIZE}&offset=${offset}`,
-  );
+  const res = await fetch(`/api/buscar?${params}${separator}limite=${PAGE_SIZE}&offset=${offset}`);
   if (!res.ok) {
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
@@ -47,24 +45,23 @@ export function SearchResults() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-    error,
-  } = useInfiniteQuery({
-    queryKey: ["search", paramsString],
-    queryFn: ({ pageParam = 0 }) => fetchResults(paramsString, pageParam),
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.items.length < PAGE_SIZE) return undefined;
-      return allPages.length * PAGE_SIZE;
-    },
-    initialPageParam: 0,
-    enabled: paramsString.length > 0,
-  });
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError, error } =
+    useInfiniteQuery({
+      queryKey: ["search", paramsString],
+      queryFn: ({ pageParam = 0 }) => fetchResults(paramsString, pageParam),
+      getNextPageParam: (lastPage, allPages) => {
+        if (lastPage.items.length < PAGE_SIZE) return undefined;
+        return allPages.reduce((sum, p) => sum + p.items.length, 0);
+      },
+      initialPageParam: 0,
+      enabled: paramsString.length > 0,
+    });
+
+  // Reset scroll to top when query/filters change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — scroll on query change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [paramsString]);
 
   // Infinite scroll observer
   const handleObserver = useCallback(
@@ -102,6 +99,7 @@ export function SearchResults() {
       <div className="space-y-4 py-4">
         {Array.from({ length: 3 }).map((_, i) => (
           <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
             key={`skeleton-${i}`}
             className="h-32 animate-pulse rounded-lg bg-[var(--color-border)]"
           />
@@ -136,7 +134,8 @@ export function SearchResults() {
     return (
       <div>
         <p className="pb-4 text-sm text-[var(--color-muted)]">
-          Proveedor encontrado · {allItems.length} contrato{allItems.length !== 1 ? "s" : ""} en SECOP II
+          Proveedor encontrado · {allItems.length} contrato{allItems.length !== 1 ? "s" : ""} en
+          SECOP II
           {data?.pages[0]?.fromCache && " · desde caché"}
         </p>
         <ProviderCard contracts={allItems} />
