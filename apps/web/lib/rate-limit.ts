@@ -10,22 +10,31 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { getRedis } from "./redis.js";
+import { getRedis } from "./redis";
+
+/** Dummy limiter used when Redis is not configured (dev mode) */
+const passthroughLimiter = {
+  limit: async () => ({ success: true, limit: 999, remaining: 999, reset: Date.now() }),
+} as unknown as Ratelimit;
 
 let searchRateLimiter: Ratelimit | null = null;
 
 /**
  * Rate limiter for search API routes.
  * Sliding window: 30 requests per 10 seconds per IP.
+ * Falls back to passthrough when Redis is not configured.
  */
 export function getSearchRateLimiter(): Ratelimit {
   if (!searchRateLimiter) {
-    searchRateLimiter = new Ratelimit({
-      redis: getRedis(),
-      limiter: Ratelimit.slidingWindow(30, "10 s"),
-      prefix: "secopia:rl:search",
-      analytics: false,
-    });
+    const redis = getRedis();
+    searchRateLimiter = redis
+      ? new Ratelimit({
+          redis,
+          limiter: Ratelimit.slidingWindow(30, "10 s"),
+          prefix: "secopia:rl:search",
+          analytics: false,
+        })
+      : passthroughLimiter;
   }
   return searchRateLimiter;
 }
@@ -35,15 +44,19 @@ let chatRateLimiter: Ratelimit | null = null;
 /**
  * Rate limiter for chat API routes (more expensive due to LLM calls).
  * Sliding window: 10 requests per 60 seconds per IP.
+ * Falls back to passthrough when Redis is not configured.
  */
 export function getChatRateLimiter(): Ratelimit {
   if (!chatRateLimiter) {
-    chatRateLimiter = new Ratelimit({
-      redis: getRedis(),
-      limiter: Ratelimit.slidingWindow(10, "60 s"),
-      prefix: "secopia:rl:chat",
-      analytics: false,
-    });
+    const redis = getRedis();
+    chatRateLimiter = redis
+      ? new Ratelimit({
+          redis,
+          limiter: Ratelimit.slidingWindow(10, "60 s"),
+          prefix: "secopia:rl:chat",
+          analytics: false,
+        })
+      : passthroughLimiter;
   }
   return chatRateLimiter;
 }

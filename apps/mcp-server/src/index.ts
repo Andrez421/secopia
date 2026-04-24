@@ -25,7 +25,7 @@ import { createSecopiaServer } from "@secopia/mcp";
 
 // ─── Configuration ──────────────────────────────────────────
 
-const PORT = Number(process.env.PORT ?? 3001);
+const PORT = Number(process.env.PORT ?? 3002);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -204,6 +204,15 @@ setInterval(() => {
 }, SESSION_CLEANUP_INTERVAL_MS);
 
 // ─── Start ──────────────────────────────────────────────────
+
+httpServer.on("error", (err) => {
+  if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
+    console.error(`\n  ❌ Port ${PORT} is already in use.`);
+    console.log("     Try: PORT=3003 pnpm dev\n");
+    process.exit(1);
+  }
+  throw err;
+});
 
 httpServer.listen(PORT, HOST, () => {
   console.log("\n  🔍 Secopia MCP Server");

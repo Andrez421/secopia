@@ -8,10 +8,22 @@
 import { Redis } from "@upstash/redis";
 
 let redis: Redis | null = null;
+let redisUnavailable = false;
 
-export function getRedis(): Redis {
+/**
+ * Get the shared Upstash Redis client.
+ * Returns null if Redis is not configured (dev mode without env vars).
+ */
+export function getRedis(): Redis | null {
+  if (redisUnavailable) return null;
   if (!redis) {
-    redis = Redis.fromEnv();
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) {
+      redisUnavailable = true;
+      return null;
+    }
+    redis = new Redis({ url, token });
   }
   return redis;
 }
