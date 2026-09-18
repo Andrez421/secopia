@@ -19,6 +19,10 @@ export function getSocrataClient(): SocrataClient {
     client = new SocrataClient({
       appToken: process.env.SOCRATA_APP_TOKEN,
       cache: { ttlMs: 0 }, // Disabled — web uses Redis cache
+      // 30s: selective filter combinations (like + equals) can scan deep
+      // into the dataset — 15s produced 502s on queries Socrata answers
+      // in ~20-50s under load. Ceiling, not target: fast queries unaffected.
+      timeoutMs: 30_000,
     });
   }
   return client;
