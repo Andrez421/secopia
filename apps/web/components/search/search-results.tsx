@@ -14,6 +14,7 @@
 
 import { ContractCard } from "@/components/contract/contract-card";
 import { ProviderCard } from "@/components/contract/provider-card";
+import { normalizeContract } from "@/lib/normalize";
 import type { ContratoSECOP2, SearchResponse } from "@secopia/types";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -118,7 +119,12 @@ export function SearchResults() {
     );
   }
 
-  const allItems = data?.pages.flatMap((page) => page.items) ?? [];
+  const tipo = searchParams.get("tipo") ?? "contratos";
+  // procesos/secop1 rows have different field names — normalize to the
+  // ContratoSECOP2 display shape so cards render real data
+  const allItems = (data?.pages ?? []).flatMap((page) =>
+    page.items.map((item) => normalizeContract(item as unknown as Record<string, unknown>, tipo)),
+  );
 
   // No results
   if (allItems.length === 0) {
@@ -130,7 +136,8 @@ export function SearchResults() {
   }
 
   // ── NUMERIC QUERY: show provider profile card ─────────────────
-  if (isNumericQuery(q)) {
+  // Only for contratos — document lookup is only defined on that dataset
+  if (isNumericQuery(q) && tipo === "contratos") {
     return (
       <div>
         <p className="pb-4 text-sm text-[var(--color-muted)]">
@@ -153,7 +160,7 @@ export function SearchResults() {
 
       <div className="space-y-3">
         {allItems.map((item, index) => (
-          <ContractCard key={item.id_contrato ?? `result-${index}`} contract={item} />
+          <ContractCard key={item.id_contrato || `result-${index}`} contract={item} />
         ))}
       </div>
 

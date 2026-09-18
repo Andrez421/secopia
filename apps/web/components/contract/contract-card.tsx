@@ -67,7 +67,7 @@ function CardContent({ contract, href }: ContractCardProps & { href?: string }) 
                 {contract.proveedor_adjudicado}
               </Link>
             ) : (
-              (contract.proveedor_adjudicado ?? "Proveedor no especificado")
+              contract.proveedor_adjudicado || "Proveedor no especificado"
             )}
           </p>
         </div>
