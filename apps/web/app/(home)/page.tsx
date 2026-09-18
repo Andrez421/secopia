@@ -27,7 +27,7 @@ export default function HomePage() {
         <SearchBar />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 text-center text-sm text-[var(--color-muted)] sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 text-center text-sm text-[var(--color-muted)] sm:grid-cols-2">
         <div>
           <p className="font-semibold text-[var(--color-foreground)]">Rápido</p>
           <p>Resultados en milisegundos con caché inteligente</p>
@@ -35,10 +35,6 @@ export default function HomePage() {
         <div>
           <p className="font-semibold text-[var(--color-foreground)]">Abierto</p>
           <p>Datos públicos de datos.gov.co, código open source</p>
-        </div>
-        <div>
-          <p className="font-semibold text-[var(--color-foreground)]">IA integrada</p>
-          <p>Chat con IA que consulta datos en tiempo real</p>
         </div>
       </div>
     </div>

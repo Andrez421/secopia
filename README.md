@@ -22,7 +22,7 @@ Secopia es una plataforma open source que facilita la consulta de contratos y pr
 
 ```bash
 # Requisitos: Node.js ≥ 22, pnpm ≥ 9
-git clone https://github.com/secopia/secopia.git
+git clone https://github.com/Andrez421/secopia.git
 cd secopia
 pnpm install
 

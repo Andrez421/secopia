@@ -12,7 +12,7 @@
 
 ```bash
 # 1. Clonar el repo
-git clone https://github.com/secopia/secopia.git
+git clone https://github.com/Andrez421/secopia.git
 cd secopia
 
 # 2. Instalar dependencias
