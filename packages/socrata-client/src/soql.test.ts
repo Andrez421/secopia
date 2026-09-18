@@ -127,6 +127,51 @@ describe("SoQLBuilder", () => {
     });
   });
 
+  describe("groupBy aggregates", () => {
+    it("emits GROUP BY with aggregate selects and count(*)", () => {
+      const query = new SoQLBuilder()
+        .groupBy(
+          ["proveedor_adjudicado", "documento_proveedor"],
+          [
+            { fn: "sum", field: "valor_del_contrato", alias: "valor_total" },
+            { fn: "count", alias: "contratos" },
+          ],
+        )
+        .orderBy("valor_total")
+        .limit(10)
+        .build();
+      assert.match(
+        query,
+        /SELECT proveedor_adjudicado, documento_proveedor, sum\(valor_del_contrato\) AS valor_total, count\(\*\) AS contratos GROUP BY proveedor_adjudicado, documento_proveedor ORDER BY valor_total DESC LIMIT 10/,
+      );
+    });
+
+    it("keeps WHERE conditions ahead of GROUP BY", () => {
+      const query = new SoQLBuilder()
+        .like("nombre_entidad", "hospital")
+        .groupBy(
+          ["estado_contrato"],
+          [{ fn: "avg", field: "valor_del_contrato", alias: "promedio" }],
+        )
+        .build();
+      assert.match(
+        query,
+        /WHERE upper\(nombre_entidad\) like '%HOSPITAL%' GROUP BY estado_contrato/,
+      );
+    });
+
+    it("rejects unsafe field names in groups and aggregates", () => {
+      assert.throws(
+        () => new SoQLBuilder().groupBy(["a; drop"], [{ fn: "count", alias: "n" }]),
+        /Invalid SoQL field name/,
+      );
+      assert.throws(
+        () => new SoQLBuilder().groupBy(["ok"], [{ fn: "sum", field: "x-y", alias: "n" }]),
+        /Invalid SoQL field name/,
+      );
+    });
+  });
+
   describe("limit clamping", () => {
     it("clamps limit to max 200", () => {
       const query = new SoQLBuilder().limit(500).build();
