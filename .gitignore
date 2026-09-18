@@ -5,6 +5,7 @@ node_modules/
 dist/
 .next/
 out/
+*.tsbuildinfo
 
 # Turbo
 .turbo/
@@ -30,6 +31,9 @@ coverage/
 
 # Agent Teams Lite
 .atl/
+
+# CodeGraph local index
+.codegraph/
 
 # Debug
 npm-debug.log*
