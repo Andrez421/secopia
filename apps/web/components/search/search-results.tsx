@@ -166,21 +166,58 @@ export function SearchResults() {
   // hasMore comes from the API's limite+1 probe; the page-full heuristic
   // remains as a fallback for responses cached before the field existed.
   const hasNextPage = data?.hasMore ?? items.length >= limite;
-  const isPartial = data?.partial === true;
+  // Typesense responses cover the rolling index window only (indexedFrom
+  // = window start); the user can expand to the full history via completo=1.
+  const indexedFrom = data?.indexedFrom;
+  const windowYear = indexedFrom?.slice(0, 4);
   const total = data?.total ?? items.length;
   const totalExact = data?.totalExact === true;
   const totalPages = totalExact ? Math.ceil(total / limite) : undefined;
+
+  const completoActive = searchParams.get("completo") === "1";
+
+  function expandToFullHistory() {
+    const params = new URLSearchParams(paramsString);
+    params.set("completo", "1");
+    params.delete("pagina");
+    router.push(`/buscar?${params.toString()}`);
+  }
+
+  function backToRecent() {
+    const params = new URLSearchParams(paramsString);
+    params.delete("completo");
+    params.delete("pagina");
+    router.push(`/buscar?${params.toString()}`);
+  }
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
         <p className="text-sm text-[var(--color-muted)]">
-          {isPartial
-            ? `${total.toLocaleString("es-CO")} resultados · índice parcial`
+          {indexedFrom
+            ? `${total.toLocaleString("es-CO")} resultados · contratos desde ${windowYear}`
             : totalExact
               ? `${total.toLocaleString("es-CO")} resultados`
               : `Más de ${total.toLocaleString("es-CO")} resultados`}
           {data?.fromCache && " · desde caché"}
+          {indexedFrom && (
+            <button
+              type="button"
+              onClick={expandToFullHistory}
+              className="ml-2 text-[var(--color-primary)] underline underline-offset-2 hover:opacity-80"
+            >
+              histórico completo →
+            </button>
+          )}
+          {completoActive && !indexedFrom && (
+            <button
+              type="button"
+              onClick={backToRecent}
+              className="ml-2 text-[var(--color-primary)] underline underline-offset-2 hover:opacity-80"
+            >
+              ← solo recientes
+            </button>
+          )}
         </p>
 
         <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">

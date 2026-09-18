@@ -53,10 +53,11 @@ export interface SearchResponse<T> {
   /** True when more results exist beyond this page */
   hasMore?: boolean;
   /**
-   * True when results come from the partial Typesense index as a degraded
-   * fallback (Socrata unavailable) — coverage is a subset of the dataset.
+   * Set when results come from the rolling Typesense index — the window
+   * start date (YYYY-MM-DD) so the UI can disclose coverage and offer an
+   * expansion to the full history (?completo=1).
    */
-  partial?: boolean;
+  indexedFrom?: string;
   query_soql: string;
   fromCache?: boolean;
   /** Time in milliseconds for Typesense search (only present for Typesense results) */

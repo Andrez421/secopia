@@ -67,7 +67,7 @@ secopia/
 
 - **Frontend:** Next.js 16, React 19, Tailwind CSS v4, TanStack Query
 - **Backend:** Edge Functions (Vercel), Upstash Redis (cache + rate limit)
-- **Búsqueda:** Typesense (full-text), Socrata API (filtros avanzados)
+- **Búsqueda:** Typesense (full-text, ventana rolling de años recientes), Socrata API (filtros, histórico completo y NIT)
 - **Chat:** Vercel AI SDK v6 + Google Gemini
 - **MCP:** Model Context Protocol SDK con Zod validation
 - **Monorepo:** pnpm workspaces + Turborepo
@@ -110,6 +110,7 @@ TYPESENSE_PORT=               # Puerto de Typesense (8108 local)
 TYPESENSE_PROTOCOL=           # http o https
 TYPESENSE_API_KEY=            # API key de Typesense (search-only)
 TYPESENSE_ADMIN_API_KEY=      # API key admin (solo sync script)
+TYPESENSE_WINDOW_YEARS=2      # Años cubiertos por el índice (año actual + anteriores)
 NEXT_PUBLIC_APP_URL=          # URL pública de la app
 ```
 
@@ -137,13 +138,34 @@ UPSTASH_REDIS_REST_URL=http://localhost:8079
 TYPESENSE_HOST=localhost
 TYPESENSE_API_KEY=dev-key
 
-# Sincronizar datos de Socrata a Typesense
+# Sincronizar datos de Socrata a Typesense (ventana rolling, ver abajo)
 pnpm tsx scripts/sync-typesense.ts
+
+# O levantar el worker recurrente (incremental diario + resync semanal)
+docker compose --profile sync up -d sync
 
 # Iniciar la app
 pnpm build
 pnpm start
 ```
+
+### Índice rolling de Typesense
+
+El índice full-text no cubre el dataset completo (~5M registros): mantiene una
+ventana de los últimos `TYPESENSE_WINDOW_YEARS` años calendario (default 2 →
+año actual + anterior), que es lo que más se busca. Un worker
+(`scripts/Dockerfile.sync`) corre sync incremental diario
+(`ultima_actualizacion`), resync completo de la ventana semanal, y purga
+automática de documentos fuera de la ventana (`TYPESENSE_PURGE`).
+
+En la API, las búsquedas de texto libre van a Typesense y responden con
+`indexedFrom` para que la UI muestre la cobertura; `?completo=1` (o cualquier
+filtro, NIT, u otro dataset) consulta Socrata sobre el histórico completo.
+
+Variables del worker: `TYPESENSE_SYNC_DAYS` (ventana incremental, default 60;
+`0` = resync completo), `TYPESENSE_SYNC_BATCH` (default 5000),
+`SYNC_INTERVAL_SECONDS` (default 86400), `SYNC_FULL_DOW` (día del resync
+completo, default 7 = domingo).
 
 ## Seguridad
 

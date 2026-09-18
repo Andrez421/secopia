@@ -1,30 +1,49 @@
 #!/usr/bin/env tsx
 /**
- * sync-typesense.ts — Sync Socrata data to Typesense
+ * sync-typesense.ts — Sync Socrata data to Typesense (rolling window)
  *
- * Fetches contracts from SECOP II via Socrata API and upserts
- * them into a Typesense collection for instant full-text search.
+ * Indexes SECOP II contracts into Typesense for instant full-text search.
+ * Instead of the full ~5M-row dataset, it keeps a ROLLING WINDOW of
+ * recent contracts (what users actually search) and purges the rest.
  *
- * Usage:
- *   pnpm tsx scripts/sync-typesense.ts
+ * Modes (env):
+ *   TYPESENSE_WINDOW_YEARS  — Index window in years, counting the current
+ *                             calendar year. Default 2 → 2025+2026 in 2026.
+ *                             Cutoff = Jan 1 of (currentYear - YEARS + 1).
+ *   TYPESENSE_SYNC_DAYS     — >0: incremental sync of records updated in
+ *                             the last N days (ultima_actualizacion).
+ *                             0 (default): full window resync.
+ *   TYPESENSE_SYNC_BATCH    — Rows per Socrata page (default 5000; Socrata
+ *                             accepts up to ~50K, far above the 200 used
+ *                             on the request path).
+ *   TYPESENSE_PURGE         — "0" disables the auto-purge.
+ *
+ * Auto-purge: after every run, documents with fecha_de_firma older than
+ * the window start are deleted via filter_by — the index self-maintains
+ * as the year rolls over.
  *
  * Environment:
  *   SOCRATA_APP_TOKEN         — Socrata API token (recommended)
  *   TYPESENSE_HOST            — Typesense host
  *   TYPESENSE_ADMIN_API_KEY   — Typesense admin API key (write access)
  *
- * Designed to run as a cron job (every 30 minutes) or GitHub Action.
+ * Designed to run as a recurring job (the sync service loops it daily,
+ * full resync on Sundays) or manually:
+ *   pnpm tsx scripts/sync-typesense.ts
  */
 
-import { DATASETS, SoQLBuilder, SocrataClient } from "@secopia/socrata-client";
+import { DATASETS, SocrataClient } from "@secopia/socrata-client";
 import type { ContratoSECOP2 } from "@secopia/types";
 import Typesense from "typesense";
 
 // ─── Configuration ──────────────────────────────────────────────
 
-const BATCH_SIZE = 250;
-const MAX_RECORDS = 50_000; // Safety limit per sync run
 const COLLECTION_NAME = "contratos";
+const WINDOW_YEARS = Math.max(1, Number(process.env.TYPESENSE_WINDOW_YEARS ?? 2));
+const SYNC_DAYS = Math.max(0, Number(process.env.TYPESENSE_SYNC_DAYS ?? 0));
+const SYNC_BATCH = Math.min(50_000, Math.max(200, Number(process.env.TYPESENSE_SYNC_BATCH ?? 5000)));
+const PURGE = process.env.TYPESENSE_PURGE !== "0";
+const PAGE_DELAY_MS = 200;
 
 const SCHEMA = {
   name: COLLECTION_NAME,
@@ -42,11 +61,18 @@ const SCHEMA = {
     { name: "ciudad", type: "string" as const, facet: true, optional: true },
     { name: "estado_contrato", type: "string" as const, facet: true, optional: true },
     { name: "valor_del_contrato", type: "float" as const, facet: false, optional: true },
-    { name: "fecha_de_firma", type: "int64" as const, facet: false, sort: true },
+    // facet:true is required for the purge's filter_by delete
+    { name: "fecha_de_firma", type: "int64" as const, facet: true, sort: true },
     { name: "urlproceso", type: "string" as const, facet: false, optional: true },
   ],
   default_sorting_field: "fecha_de_firma",
 };
+
+/** Jan 1 UTC of the first year inside the window (YEARS=2, 2026 → 2025-01-01). */
+function windowStartDate(): Date {
+  const year = new Date().getUTCFullYear() - (WINDOW_YEARS - 1);
+  return new Date(Date.UTC(year, 0, 1));
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -139,49 +165,81 @@ async function main() {
 
   const socrata = new SocrataClient({
     appToken: process.env.SOCRATA_APP_TOKEN,
+    // Window scans fetch large date-filtered pages; these stay fast because
+    // the date column is indexed, but give Socrata headroom under load.
+    timeoutMs: 120_000,
+    cache: { ttlMs: 0 },
   });
 
-  // ── 1. Ensure collection exists ──────────────────────────
+  const windowStart = windowStartDate();
+  const windowStartISO = windowStart.toISOString().slice(0, 10);
+  const windowStartTs = Math.floor(windowStart.getTime() / 1000);
+  const incremental = SYNC_DAYS > 0;
+  const recentCutoffISO = new Date(Date.now() - SYNC_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
+  // ── 1. Ensure collection exists with the right schema ─────
+
+  let collectionExists = true;
   try {
-    await ts.collections(COLLECTION_NAME).retrieve();
-    console.log(`✅ Collection "${COLLECTION_NAME}" exists`);
+    const existing = await ts.collections(COLLECTION_NAME).retrieve();
+    const fechaField = existing.fields?.find((f) => f.name === "fecha_de_firma");
+    if (fechaField && fechaField.facet !== true) {
+      // facet:true is required for the purge filter; schema can't be
+      // altered in place on this version — recreate and force a full sync.
+      console.log("🔁 Recreating collection: fecha_de_firma needs facet:true for purge");
+      await ts.collections(COLLECTION_NAME).delete();
+      collectionExists = false;
+    }
   } catch {
+    collectionExists = false;
+  }
+  if (!collectionExists) {
     console.log(`📦 Creating collection "${COLLECTION_NAME}"...`);
     await ts.collections().create(SCHEMA);
-    console.log("✅ Collection created");
+  } else {
+    console.log(`✅ Collection "${COLLECTION_NAME}" exists`);
   }
+
+  // A missing/recreated collection must backfill the whole window even in
+  // incremental mode — otherwise only the last SYNC_DAYS would be indexed.
+  const fullWindow = !incremental || !collectionExists;
 
   // ── 2. Fetch and upsert in batches ──────────────────────
 
   const ds = DATASETS.contratos;
+  const whereFecha = `${ds.campos.fecha_firma} >= '${windowStartISO}'`;
+  const whereClause = fullWindow
+    ? whereFecha
+    : `ultima_actualizacion >= '${recentCutoffISO}' AND ${whereFecha}`;
+
+  // Field names are internal constants — where() is safe here (no user input).
+  // Ordered DESC so the newest records land first; a short page ends the loop.
+  const orderField = fullWindow ? ds.campos.fecha_firma : "ultima_actualizacion";
+
+  console.log(
+    `\n🔄 Sync ${fullWindow ? `full window (>= ${windowStartISO})` : `last ${SYNC_DAYS}d updates`}...`,
+  );
+
   let offset = 0;
   let totalUpserted = 0;
   let hasMore = true;
 
-  console.log("\n🔄 Starting sync from Socrata → Typesense...");
-
-  while (hasMore && offset < MAX_RECORDS) {
-    const q = new SoQLBuilder()
-      .orderBy(ds.campos.fecha_firma)
-      .limit(BATCH_SIZE)
-      .offset(offset)
-      .build();
+  while (hasMore) {
+    const q =
+      `SELECT * WHERE ${whereClause} ORDER BY ${orderField} DESC ` +
+      `LIMIT ${SYNC_BATCH} OFFSET ${offset}`;
 
     const batch = await socrata.query<ContratoSECOP2>(ds.id, q);
 
-    if (batch.length === 0) {
-      hasMore = false;
-      break;
-    }
+    if (batch.length === 0) break;
 
-    const documents = batch.map(transformContract).filter((d) => d.id); // Skip documents without an ID
+    const documents = batch.map(transformContract).filter((d) => d.id);
 
     try {
       const { successes, failures } = await importWithRetry(ts, documents);
-
       totalUpserted += successes;
-
       if (failures > 0) {
         console.warn(`  ⚠️  Batch at offset ${offset}: ${successes} ok, ${failures} failed`);
       }
@@ -192,13 +250,25 @@ async function main() {
     offset += batch.length;
     process.stdout.write(`\r  📥 Processed: ${offset} records (${totalUpserted} upserted)`);
 
-    // Respect Socrata rate limits
-    if (batch.length === BATCH_SIZE) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
+    hasMore = batch.length === SYNC_BATCH;
+    if (hasMore) await new Promise((resolve) => setTimeout(resolve, PAGE_DELAY_MS));
   }
 
-  console.log(`\n\n✅ Sync complete: ${totalUpserted} documents upserted`);
+  console.log(`\n  ✅ Upserted ${totalUpserted} documents`);
+
+  // ── 3. Auto-purge records outside the window ────────────
+
+  if (PURGE) {
+    console.log(`🧹 Purging documents with fecha_de_firma < ${windowStartISO}...`);
+    const res = await ts
+      .collections(COLLECTION_NAME)
+      .documents()
+      .delete({ filter_by: `fecha_de_firma:<${windowStartTs}` });
+    console.log(`  🗑️  Purged ${res.num_deleted ?? "?"} documents`);
+  }
+
+  const stats = await ts.collections(COLLECTION_NAME).retrieve();
+  console.log(`\n✅ Sync complete: ${stats.num_documents ?? "?"} documents in index`);
 }
 
 main().catch((err) => {

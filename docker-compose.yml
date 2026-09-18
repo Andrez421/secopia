@@ -59,6 +59,29 @@ services:
       timeout: 3s
       retries: 3
 
+  # Rolling-window indexer: keeps the last TYPESENSE_WINDOW_YEARS of
+  # contracts indexed and purges older docs automatically.
+  # Opt-in profile — enable with: docker compose --profile sync up -d
+  sync:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.sync
+    profiles: ["sync"]
+    environment:
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: "8108"
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_ADMIN_API_KEY: dev-key
+      SOCRATA_APP_TOKEN: ${SOCRATA_APP_TOKEN:-}
+      TYPESENSE_WINDOW_YEARS: "2"
+      TYPESENSE_SYNC_DAYS: "60"
+      SYNC_INTERVAL_SECONDS: "86400"
+      SYNC_FULL_DOW: "7"
+    depends_on:
+      typesense:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   redis-data:
   typesense-data:

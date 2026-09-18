@@ -2,14 +2,16 @@
  * /api/buscar — Search API Route
  *
  * SEARCH STRATEGY:
- * - Socrata is the primary path for ALL queries (full ~5M-row dataset) —
- *   free text via orLike across entity/provider/description fields.
- * - Typesense is a degraded fallback for text-only queries when Socrata
- *   fails: its index holds ~50K rows (partial coverage, flagged `partial`).
- * - Totals: rows are fetched as limite+1 (hasMore probe). Exact counts run
- *   in the background via after() + SELECT count(*) and land in Redis for
- *   subsequent pages — the count can take ~60s (full scan), too slow for
- *   the request path.
+ * - Text-only queries on contratos → Typesense first: a rolling index of
+ *   recent contracts (TYPESENSE_WINDOW_YEARS, default 2 = current + prior
+ *   calendar year). Responses carry `indexedFrom` so the UI can disclose
+ *   the coverage window and offer expansion to the full history.
+ * - `completo=1` (or any filter, numeric query, other datasets) → Socrata
+ *   on the full ~5M-row dataset. If Typesense fails, text queries also
+ *   fall through to Socrata.
+ * - Totals on the Socrata path: limite+1 hasMore probe, plus an exact
+ *   count(*) scheduled post-response via after() and cached in Redis —
+ *   the count can take minutes (full scan), too slow for the request path.
  *
  * SECURITY:
  * - Rate limited: 30 req/10s per IP
@@ -107,43 +109,13 @@ async function maybeScheduleCount(
 }
 
 /**
- * Degraded search via the partial Typesense index (~50K of 5M+ rows).
- * Only reached when Socrata fails — responses are flagged `partial`
- * so the UI can communicate reduced coverage instead of a wrong total.
+ * First year covered by the rolling Typesense index. Mirrors the sync
+ * worker's TYPESENSE_WINDOW_YEARS (default 2 → in 2026 the index covers
+ * contracts since 2025-01-01). Reported as `indexedFrom` in responses.
  */
-async function searchTypesensePartial(
-  q: string,
-  limite: number,
-  offset: number,
-  rateLimitRemaining: number,
-): Promise<NextResponse | null> {
-  try {
-    const tsResult = await searchContratos({
-      q,
-      limit: Math.min(limite, 200),
-      offset: Math.max(0, offset),
-    });
-
-    const response: SearchResponse<unknown> = {
-      items: tsResult.items,
-      total: tsResult.total,
-      hasMore: offset + tsResult.items.length < tsResult.total,
-      totalExact: true,
-      partial: true,
-      query_soql: `typesense:${q}`,
-      searchTimeMs: tsResult.searchTimeMs,
-    };
-
-    return NextResponse.json(response, {
-      headers: { "X-RateLimit-Remaining": String(rateLimitRemaining) },
-    });
-  } catch (tsError) {
-    console.warn(
-      "[api/buscar] Typesense fallback also failed:",
-      tsError instanceof Error ? tsError.message : tsError,
-    );
-    return null;
-  }
+function indexedFromISO(): string {
+  const years = Math.max(1, Number(process.env.TYPESENSE_WINDOW_YEARS ?? 2));
+  return `${new Date().getUTCFullYear() - (years - 1)}-01-01`;
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: API handler with multiple sequential stages
@@ -213,7 +185,64 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── 3. Build SoQL — fetch limite+1 rows as a hasMore probe ─
+    // ── 3. Typesense path (fast windowed index) ──────────────
+    // Text-only contratos queries hit the rolling Typesense index (recent
+    // years) — <50ms with typo tolerance. `completo=1`, numeric queries
+    // (cédula/NIT), filters and other datasets skip it for the full
+    // Socrata dataset; a Typesense failure falls through too.
+
+    const forceFull = !!params.get("completo");
+
+    if (
+      q &&
+      tipo === "contratos" &&
+      isTextOnlyQuery(params) &&
+      !isNumericQuery(q) &&
+      !forceFull &&
+      isTypesenseAvailable()
+    ) {
+      const cacheKey = `ts:${q}:${limite}:${offset}`;
+      const cached = await getCached<SearchResponse<unknown>>(cacheKey);
+
+      if (cached) {
+        return NextResponse.json(
+          { ...cached, fromCache: true },
+          { headers: { "X-RateLimit-Remaining": String(remaining) } },
+        );
+      }
+
+      try {
+        const tsResult = await searchContratos({
+          q,
+          limit: Math.min(limite, 200),
+          offset: Math.max(0, offset),
+        });
+
+        const response: SearchResponse<unknown> = {
+          items: tsResult.items,
+          total: tsResult.total,
+          hasMore: offset + tsResult.items.length < tsResult.total,
+          totalExact: true,
+          indexedFrom: indexedFromISO(),
+          query_soql: `typesense:${q}`,
+          searchTimeMs: tsResult.searchTimeMs,
+        };
+
+        await setCached(cacheKey, response);
+
+        return NextResponse.json(response, {
+          headers: { "X-RateLimit-Remaining": String(remaining) },
+        });
+      } catch (tsError) {
+        // Typesense failed — fall through to Socrata (full dataset)
+        console.warn(
+          "[api/buscar] Typesense error, falling back to Socrata:",
+          tsError instanceof Error ? tsError.message : tsError,
+        );
+      }
+    }
+
+    // ── 4. Build SoQL — fetch limite+1 rows as a hasMore probe ─
     // Socrata cannot report a total; the extra row cheaply tells us
     // whether another page exists beyond this one.
 
@@ -250,7 +279,7 @@ export async function GET(req: NextRequest) {
     const soqlQuery = builder.build();
     const countQuery = builder.buildCount();
 
-    // ── 4. Check Redis Cache ────────────────────────────────
+    // ── 5. Check Redis Cache ────────────────────────────────
 
     const cacheKey = `${ds.id}:${soqlQuery}`;
     const countKey = `count:${ds.id}:${countQuery}`;
@@ -274,27 +303,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── 5. Query Socrata (primary path — full dataset) ──────
+    // ── 6. Query Socrata (full dataset) ────────────────────
 
     const client = getSocrataClient();
-    let rows: Record<string, unknown>[];
-    try {
-      rows = await client.query(ds.id, soqlQuery);
-    } catch (socrataError) {
-      // Socrata down or timed out — degraded fallback to the partial
-      // Typesense index for text-only contratos queries.
-      if (
-        q &&
-        tipo === "contratos" &&
-        !isNumericQuery(q) &&
-        isTextOnlyQuery(req.nextUrl.searchParams) &&
-        isTypesenseAvailable()
-      ) {
-        const degraded = await searchTypesensePartial(q, limite, offset, remaining);
-        if (degraded) return degraded;
-      }
-      throw socrataError;
-    }
+    // No Typesense fallback here: Typesense-primary queries already fell
+    // through to Socrata, and completo=1 explicitly wants the full dataset.
+    const rows = await client.query(ds.id, soqlQuery);
 
     // When fetchLimit == limite (limite already at the 200 cap), a full
     // page can't distinguish "exactly N" from "more" — stay optimistic.
@@ -311,7 +325,7 @@ export async function GET(req: NextRequest) {
       query_soql: soqlQuery,
     };
 
-    // ── 6. Cache & Return ───────────────────────────────────
+    // ── 7. Cache & Return ───────────────────────────────────
 
     await setCached(cacheKey, response);
 

@@ -1,0 +1,25 @@
+# Typesense sync worker — recurring indexer for the search stack.
+# Loops scripts/sync-typesense.ts on an interval (recent mode daily,
+# full-window resync on Sundays via SYNC_FULL_DOW).
+FROM node:22-alpine
+
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+
+WORKDIR /app
+COPY . .
+
+RUN pnpm install --frozen-lockfile \
+  && pnpm --filter @secopia/types --filter @secopia/socrata-client build
+
+# SYNC_INTERVAL_SECONDS — delay between runs (default 24h)
+# SYNC_FULL_DOW — day of week for full-window resync (0=Sun, default 7=Sun)
+# TYPESENSE_SYNC_DAYS — incremental window in days for normal runs (default 60)
+CMD ["sh", "-c", "while :; do \
+    if [ \"$(date +%u)\" = \"${SYNC_FULL_DOW:-7}\" ]; then \
+      echo '[sync] full-window run'; TYPESENSE_SYNC_DAYS=0 pnpm exec tsx scripts/sync-typesense.ts; \
+    else \
+      echo '[sync] incremental run'; pnpm exec tsx scripts/sync-typesense.ts; \
+    fi; \
+    echo \"[sync] sleeping ${SYNC_INTERVAL_SECONDS:-86400}s\"; \
+    sleep \"${SYNC_INTERVAL_SECONDS:-86400}\"; \
+  done"]

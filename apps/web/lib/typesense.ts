@@ -108,7 +108,8 @@ export const CONTRATOS_SCHEMA = {
     { name: "ciudad", type: "string" as const, facet: true },
     { name: "estado_contrato", type: "string" as const, facet: true },
     { name: "valor_del_contrato", type: "float" as const, facet: false },
-    { name: "fecha_de_firma", type: "int64" as const, facet: false, sort: true },
+    // facet:true is required for the sync worker's purge-by-filter
+    { name: "fecha_de_firma", type: "int64" as const, facet: true, sort: true },
   ],
   default_sorting_field: "fecha_de_firma",
 } as const;
