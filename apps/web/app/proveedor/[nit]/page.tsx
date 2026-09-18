@@ -389,7 +389,8 @@ export default async function ProveedorPage({ params }: PageProps) {
               items={stats.contractsWithValue}
               valueKey="pagado"
               maxValue={Math.max(...stats.contractsWithValue.map((c) => c.valor))}
-              colorClass="bg-emerald-500"
+              barClass="from-emerald-600 to-emerald-400"
+              legendSwatchClass="bg-emerald-500"
             />
           </Section>
 
@@ -402,7 +403,8 @@ export default async function ProveedorPage({ params }: PageProps) {
               items={stats.contractsWithValue}
               valueKey="pendiente"
               maxValue={Math.max(...stats.contractsWithValue.map((c) => c.valor))}
-              colorClass="bg-amber-500"
+              barClass="from-amber-600 to-amber-400"
+              legendSwatchClass="bg-amber-500"
               secondaryLabel="Histórico adjudicado"
             />
           </Section>
@@ -694,18 +696,23 @@ function StatRow({
 /**
  * CSS bar chart — no external dependencies.
  * Each bar represents one contract, sized proportionally to its value.
+ * Hovering a bar reveals a styled tooltip with the contract details.
  */
 function BarChart({
   items,
   valueKey,
   maxValue,
-  colorClass,
+  barClass,
+  legendSwatchClass,
   secondaryLabel,
 }: {
   items: ProviderStats["contractsWithValue"];
   valueKey: "pagado" | "pendiente";
   maxValue: number;
-  colorClass: string;
+  /** Gradient classes for the value bar (e.g. "from-emerald-600 to-emerald-400"). */
+  barClass: string;
+  /** Flat class for the legend swatch (e.g. "bg-emerald-500"). */
+  legendSwatchClass: string;
   secondaryLabel?: string;
 }) {
   if (items.length === 0) {
@@ -713,35 +720,69 @@ function BarChart({
   }
 
   const safeMax = maxValue > 0 ? maxValue : 1;
+  const valueLabel = valueKey === "pagado" ? "Pagado" : "Pendiente";
 
   return (
     <div>
-      <div className="flex gap-1.5 h-28">
-        {items.map((item) => {
+      <div className="flex h-32 items-stretch gap-[3px]">
+        {items.map((item, index) => {
           const val = item[valueKey];
           const valPct = Math.max((val / safeMax) * 100, val > 0 ? 4 : 0);
           const totalPct = Math.max((item.valor / safeMax) * 100, item.valor > 0 ? 2 : 0);
 
           return (
-            <div
-              key={item.id}
-              className="group relative flex-1 h-full"
-              title={`${item.entidad}\n${formatCOP(val)} ${valueKey === "pagado" ? "pagado" : "pendiente"} / ${formatCOP(item.valor)} adjudicado\n${item.fecha ? formatDate(item.fecha) : ""}`}
-            >
+            <div key={item.id || `bar-${index}`} className="group relative min-w-0 flex-1">
               {/* Total value bar (background) — anchored to bottom */}
               <div
-                className="absolute bottom-0 w-full rounded-t-sm bg-[var(--color-border)] opacity-60"
+                className="absolute bottom-0 w-full rounded-t-[3px] bg-[var(--color-border)]/70 transition-opacity group-hover:opacity-40"
                 style={{ height: `${totalPct}%` }}
               />
-              {/* Value bar (foreground) — on top, also anchored to bottom */}
+              {/* Value bar (foreground) — gradient, grows on hover */}
               <div
-                className={`absolute bottom-0 w-full rounded-t-sm ${colorClass} opacity-90`}
+                className={`absolute bottom-0 w-full origin-bottom rounded-t-[3px] bg-gradient-to-t ${barClass} transition-transform duration-150 group-hover:scale-y-[1.04] group-hover:brightness-110`}
                 style={{ height: `${valPct}%` }}
               />
+
+              {/* Tooltip — CSS-only, appears above the bar */}
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-52 -translate-x-1/2 group-hover:block">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-3 text-left shadow-lg shadow-black/10">
+                  <p className="mb-1 line-clamp-2 text-xs font-semibold leading-snug">
+                    {item.entidad || "Entidad no especificada"}
+                  </p>
+                  {item.fecha && (
+                    <p className="mb-2 text-[11px] text-[var(--color-muted)]">
+                      {formatDate(item.fecha)}
+                    </p>
+                  )}
+                  <dl className="space-y-0.5 text-[11px]">
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-[var(--color-muted)]">Adjudicado</dt>
+                      <dd className="font-semibold tabular-nums">{formatCOP(item.valor)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-[var(--color-muted)]">Pagado</dt>
+                      <dd className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        {formatCOP(item.pagado)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-[var(--color-muted)]">Pendiente</dt>
+                      <dd className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                        {formatCOP(item.pendiente)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                {/* Arrow */}
+                <div className="mx-auto h-2 w-2 -translate-y-1 rotate-45 border-b border-r border-[var(--color-border)] bg-[var(--color-background)]" />
+              </div>
             </div>
           );
         })}
       </div>
+
+      {/* Baseline */}
+      <div className="mt-px h-px w-full bg-[var(--color-border)]" />
 
       {secondaryLabel && (
         <p className="mt-1 text-center text-xs text-[var(--color-muted)]">{secondaryLabel}</p>
@@ -750,11 +791,11 @@ function BarChart({
       {/* Legend */}
       <div className="mt-3 flex items-center gap-4 text-xs text-[var(--color-muted)]">
         <span className="flex items-center gap-1.5">
-          <span className={`inline-block h-2 w-4 rounded-sm ${colorClass}`} />
-          {valueKey === "pagado" ? "Pagado" : "Pendiente"}
+          <span className={`inline-block h-2 w-4 rounded-sm ${legendSwatchClass}`} />
+          {valueLabel}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-4 rounded-sm bg-[var(--color-border)]" />
+          <span className="inline-block h-2 w-4 rounded-sm bg-[var(--color-border)]/70" />
           Adjudicado
         </span>
       </div>
