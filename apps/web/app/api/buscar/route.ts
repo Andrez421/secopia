@@ -37,8 +37,12 @@ function isTextOnlyQuery(params: URLSearchParams): boolean {
     !params.get("proveedor") &&
     !params.get("departamento") &&
     !params.get("modalidad") &&
+    !params.get("estado") &&
+    !params.get("ciudad") &&
     !params.get("valor_min") &&
-    !params.get("valor_max")
+    !params.get("valor_max") &&
+    !params.get("fecha_desde") &&
+    !params.get("fecha_hasta")
   );
 }
 
@@ -78,6 +82,10 @@ export async function GET(req: NextRequest) {
     const proveedor = params.get("proveedor") ?? undefined;
     const departamento = params.get("departamento") ?? undefined;
     const modalidad = params.get("modalidad") ?? undefined;
+    const estado = params.get("estado") ?? undefined;
+    const ciudad = params.get("ciudad") ?? undefined;
+    const fechaDesde = params.get("fecha_desde") ?? undefined;
+    const fechaHasta = params.get("fecha_hasta") ?? undefined;
     const valorMinRaw = params.get("valor_min");
     const valorMaxRaw = params.get("valor_max");
     const validationError = validateSearchParams({
@@ -179,6 +187,12 @@ export async function GET(req: NextRequest) {
     if (proveedor) builder.like(ds.campos.proveedor, proveedor);
     if (departamento) builder.equals(ds.campos.departamento, departamento);
     if (modalidad) builder.like(ds.campos.modalidad, modalidad);
+    // estado/ciudad use exact (case-insensitive) match: like '%X%' on these
+    // low-cardinality columns forces a full scan that times out (verified live)
+    if (estado && ds.campos.estado) builder.equalsUpper(ds.campos.estado, estado);
+    if (ciudad && ds.campos.ciudad) builder.equalsUpper(ds.campos.ciudad, ciudad);
+    if (fechaDesde) builder.gte(ds.campos.fecha_firma, fechaDesde);
+    if (fechaHasta) builder.lte(ds.campos.fecha_firma, fechaHasta);
     if (valorMinRaw) builder.gte(ds.campos.valor, Number(valorMinRaw));
     if (valorMaxRaw) builder.lte(ds.campos.valor, Number(valorMaxRaw));
 

@@ -144,6 +144,19 @@ export class SoQLBuilder {
   }
 
   /**
+   * Case-insensitive EXACT match via `upper(field) = 'VALUE'`.
+   * Prefer over like() on low-cardinality columns (ciudad, estado):
+   * equality can use an index while `like '%X%'` forces a full scan
+   * that times out on the 5M+ row datasets.
+   */
+  equalsUpper(field: string, value: string): this {
+    const sanitized = this.escapeQuotes(this.sanitize(value)).toUpperCase();
+    if (!sanitized) return this;
+    const safeField = this.sanitizeField(field);
+    return this.where(`upper(${safeField}) = '${sanitized}'`);
+  }
+
+  /**
    * Greater than or equal. For dates, use ISO 8601 format (YYYY-MM-DD).
    */
   gte(field: string, value: string | number): this {

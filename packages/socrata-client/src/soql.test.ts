@@ -125,6 +125,20 @@ describe("SoQLBuilder", () => {
 
       assert.match(query, /WHERE .+ AND .+ AND /);
     });
+
+    it("builds equalsUpper as a case-insensitive exact match", () => {
+      const query = new SoQLBuilder().equalsUpper("ciudad", "medellín").build();
+      assert.match(query, /upper\(ciudad\) = 'MEDELLÍN'/);
+    });
+
+    it("equalsUpper sanitizes the value and skips empty input", () => {
+      // sanitize() strips quotes before escaping — the injection attempt
+      // degrades to a harmless literal value inside the comparison
+      const injected = new SoQLBuilder().equalsUpper("estado", "x' OR '1'='1").build();
+      assert.match(injected, /upper\(estado\) = 'X OR 11'/);
+      const empty = new SoQLBuilder().equalsUpper("estado", ";;;").build();
+      assert.doesNotMatch(empty, /WHERE/);
+    });
   });
 
   describe("groupBy aggregates", () => {
