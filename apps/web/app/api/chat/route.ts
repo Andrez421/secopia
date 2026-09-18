@@ -35,6 +35,10 @@ Reglas:
 - Si el usuario pide análisis, calcula totales, promedios o distribuciones con los datos obtenidos.`;
 
 export async function POST(req: Request) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return Response.json({ error: "El chat no está disponible por el momento." }, { status: 503 });
+  }
+
   try {
     // ── 1. Rate Limiting ────────────────────────────────────
 

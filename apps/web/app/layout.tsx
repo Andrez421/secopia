@@ -48,12 +48,6 @@ export default function RootLayout({
                 >
                   Buscar
                 </Link>
-                <Link
-                  href="/chat"
-                  className="hover:text-[var(--color-foreground)] transition-colors"
-                >
-                  Chat IA
-                </Link>
                 <a
                   href="https://github.com/secopia/secopia"
                   target="_blank"

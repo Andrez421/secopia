@@ -5,7 +5,6 @@
  * message list scrolls independently from the page.
  */
 
-import { ChatPanel } from "@/components/chat/chat-panel";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -18,8 +17,10 @@ export default function ChatPage() {
   return (
     <div className="mx-auto flex h-[calc(100dvh-3.5rem-6rem)] max-w-3xl flex-col px-4 py-6">
       <h1 className="mb-4 text-xl font-bold">Preguntale a Secopia</h1>
-      <div className="min-h-0 flex-1 rounded-xl border border-[var(--color-border)]">
-        <ChatPanel />
+      <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-[var(--color-border)] px-6 text-center">
+        <p className="text-[var(--color-muted)]">
+          El chat con IA no está disponible por el momento.
+        </p>
       </div>
     </div>
   );
