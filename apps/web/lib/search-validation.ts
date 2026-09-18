@@ -15,10 +15,12 @@ export interface SearchValidationError {
 }
 
 export function validateSearchParams(params: SearchParamsRaw): SearchValidationError | null {
-  const limite = params.limite !== null ? Number(params.limite) : Number.NaN;
-  const offset = params.offset !== null ? Number(params.offset) : Number.NaN;
-
-  if (Number.isNaN(limite) || Number.isNaN(offset)) {
+  // limite/offset are optional — the route applies defaults (50 / 0).
+  // Only reject when present but not numeric.
+  if (
+    (params.limite !== null && Number.isNaN(Number(params.limite))) ||
+    (params.offset !== null && Number.isNaN(Number(params.offset)))
+  ) {
     return {
       error: "Los parámetros 'limite' y 'offset' deben ser números válidos.",
       status: 400,

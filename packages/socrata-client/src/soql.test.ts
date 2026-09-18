@@ -59,6 +59,13 @@ describe("SoQLBuilder", () => {
       assert.match(query, /BOGOTÁ/);
     });
 
+    it("preserves commas in values (department names contain them)", () => {
+      const query = new SoQLBuilder()
+        .equals("departamento", "San Andrés, Providencia y Santa Catalina")
+        .build();
+      assert.match(query, /departamento = 'San Andrés, Providencia y Santa Catalina'/);
+    });
+
     it("returns this without adding condition when value sanitizes to empty", () => {
       const query = new SoQLBuilder().like("nombre_entidad", "!@#$%^&*()").build();
       assert.equal(query, "SELECT * LIMIT 50 OFFSET 0");
@@ -117,6 +124,51 @@ describe("SoQLBuilder", () => {
         .build();
 
       assert.match(query, /WHERE .+ AND .+ AND /);
+    });
+  });
+
+  describe("groupBy aggregates", () => {
+    it("emits GROUP BY with aggregate selects and count(*)", () => {
+      const query = new SoQLBuilder()
+        .groupBy(
+          ["proveedor_adjudicado", "documento_proveedor"],
+          [
+            { fn: "sum", field: "valor_del_contrato", alias: "valor_total" },
+            { fn: "count", alias: "contratos" },
+          ],
+        )
+        .orderBy("valor_total")
+        .limit(10)
+        .build();
+      assert.match(
+        query,
+        /SELECT proveedor_adjudicado, documento_proveedor, sum\(valor_del_contrato\) AS valor_total, count\(\*\) AS contratos GROUP BY proveedor_adjudicado, documento_proveedor ORDER BY valor_total DESC LIMIT 10/,
+      );
+    });
+
+    it("keeps WHERE conditions ahead of GROUP BY", () => {
+      const query = new SoQLBuilder()
+        .like("nombre_entidad", "hospital")
+        .groupBy(
+          ["estado_contrato"],
+          [{ fn: "avg", field: "valor_del_contrato", alias: "promedio" }],
+        )
+        .build();
+      assert.match(
+        query,
+        /WHERE upper\(nombre_entidad\) like '%HOSPITAL%' GROUP BY estado_contrato/,
+      );
+    });
+
+    it("rejects unsafe field names in groups and aggregates", () => {
+      assert.throws(
+        () => new SoQLBuilder().groupBy(["a; drop"], [{ fn: "count", alias: "n" }]),
+        /Invalid SoQL field name/,
+      );
+      assert.throws(
+        () => new SoQLBuilder().groupBy(["ok"], [{ fn: "sum", field: "x-y", alias: "n" }]),
+        /Invalid SoQL field name/,
+      );
     });
   });
 

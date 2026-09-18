@@ -97,17 +97,6 @@ export async function GET(req: NextRequest) {
     const limite = Number(params.get("limite") ?? 50);
     const offset = Number(params.get("offset") ?? 0);
 
-    if (Number.isNaN(limite) || Number.isNaN(offset)) {
-      return NextResponse.json({ error: "limite y offset deben ser números" }, { status: 400 });
-    }
-
-    if (valorMinRaw && valorMaxRaw && Number(valorMinRaw) > Number(valorMaxRaw)) {
-      return NextResponse.json(
-        { error: "valor_min no puede ser mayor que valor_max" },
-        { status: 400 },
-      );
-    }
-
     // Validate dataset type
     let ds: ReturnType<typeof getDataset>;
     try {

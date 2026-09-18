@@ -52,7 +52,7 @@ pnpm dev
 ```
 secopia/
 ├── apps/
-│   ├── web/              # Next.js 15 — búsqueda + chat + páginas ISR
+│   ├── web/              # Next.js 16 — búsqueda + chat + páginas ISR
 │   └── mcp-server/       # HTTP server para MCP remoto
 ├── packages/
 │   ├── types/            # Interfaces TypeScript compartidas
@@ -65,10 +65,10 @@ secopia/
 
 ### Stack
 
-- **Frontend:** Next.js 15, React 19, Tailwind CSS v4, TanStack Query
+- **Frontend:** Next.js 16, React 19, Tailwind CSS v4, TanStack Query
 - **Backend:** Edge Functions (Vercel), Upstash Redis (cache + rate limit)
 - **Búsqueda:** Typesense (full-text), Socrata API (filtros avanzados)
-- **Chat:** Vercel AI SDK v4 + Anthropic Claude
+- **Chat:** Vercel AI SDK v6 + Google Gemini
 - **MCP:** Model Context Protocol SDK con Zod validation
 - **Monorepo:** pnpm workspaces + Turborepo
 - **Linting:** Biome
@@ -90,11 +90,11 @@ El servidor MCP expone 8 herramientas para agentes de IA:
 | `buscar_contratos` | Buscar contratos en SECOP II |
 | `buscar_procesos` | Buscar procesos de contratación SECOP II |
 | `buscar_secop1` | Buscar procesos históricos SECOP I |
+| `buscar_proveedores` | Buscar proveedores por nombre, NIT o departamento |
 | `detalle_contrato` | Obtener detalle completo de un contrato |
-| `contratos_proveedor` | Contratos por NIT de proveedor |
-| `contratos_entidad` | Contratos por nombre de entidad |
+| `historial_proveedor` | Contratos históricos de un proveedor por NIT |
 | `estadisticas_entidad` | Estadísticas de contratación de una entidad |
-| `departamentos` | Listar departamentos disponibles |
+| `top_proveedores` | Ranking de proveedores por valor adjudicado |
 
 ## Variables de Entorno
 
@@ -102,12 +102,26 @@ El servidor MCP expone 8 herramientas para agentes de IA:
 
 ```bash
 SOCRATA_APP_TOKEN=            # Token de datos.gov.co (gratis, requerido)
-ANTHROPIC_API_KEY=            # Clave de Anthropic (para el chat)
+GOOGLE_GENERATIVE_AI_API_KEY= # Clave de Google AI Studio (para el chat)
 UPSTASH_REDIS_REST_URL=       # Upstash Redis URL
 UPSTASH_REDIS_REST_TOKEN=     # Upstash Redis Token
 TYPESENSE_HOST=               # Host de Typesense
+TYPESENSE_PORT=               # Puerto de Typesense (8108 local)
+TYPESENSE_PROTOCOL=           # http o https
 TYPESENSE_API_KEY=            # API key de Typesense (search-only)
 TYPESENSE_ADMIN_API_KEY=      # API key admin (solo sync script)
+NEXT_PUBLIC_APP_URL=          # URL pública de la app
+```
+
+### `apps/mcp-server`
+
+```bash
+SOCRATA_APP_TOKEN=            # Token de datos.gov.co
+PORT=3002                     # Puerto HTTP
+HOST=0.0.0.0                  # Interfaz de red
+MCP_API_KEY=                  # Si se define, exige Authorization: Bearer <key>
+MCP_ALLOWED_ORIGINS=          # Orígenes CORS separados por coma (clientes browser)
+MCP_RATE_LIMIT=60             # Requests por minuto por IP en /mcp
 ```
 
 ## Self-hosting
@@ -119,7 +133,7 @@ Para deployar tu propia instancia:
 docker compose up -d
 
 # Configurar .env.local para servicios locales
-UPSTASH_REDIS_REST_URL=http://localhost:6379
+UPSTASH_REDIS_REST_URL=http://localhost:8079
 TYPESENSE_HOST=localhost
 TYPESENSE_API_KEY=dev-key
 

@@ -42,15 +42,14 @@ describe("validateSearchParams", () => {
     assert.strictEqual(result?.status, 400);
   });
 
-  it("returns 400 when both limite and offset are missing", () => {
+  it("returns null when both limite and offset are missing (route applies defaults)", () => {
     const result = validateSearchParams({
       limite: null,
       offset: null,
       valorMin: null,
       valorMax: null,
     });
-    assert.notStrictEqual(result, null);
-    assert.strictEqual(result?.status, 400);
+    assert.strictEqual(result, null);
   });
 
   it("returns 400 when valor_min > valor_max", () => {

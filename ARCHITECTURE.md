@@ -3,7 +3,7 @@
 # Secopia — Guía de Arquitectura
 
 > Buscador de contratación pública de Colombia (SECOP I y II), open source, sin registro, sin CAPTCHA.  
-> Versión del documento: 3.0 | Stack: Next.js 15 + TypeScript + MCP + Edge Cache + Typesense
+> Versión del documento: 3.0 | Stack: Next.js 16 + TypeScript + MCP + Edge Cache + Typesense
 
 ---
 
@@ -46,7 +46,7 @@ El `@secopia/socrata-client` es el corazón compartido entre web y MCP. Separar 
 ```
 secopia/
  ├── apps/
- │   ├── web/            → Next.js 15, Vercel Edge + Caché Redis
+ │   ├── web/            → Next.js 16, Vercel Edge + Caché Redis
  │   └── mcp-server/     → Node.js HTTP nativo + MCP SDK Streamable HTTP
  └── packages/
      ├── types/          → @secopia/types
@@ -173,7 +173,7 @@ secopia/
 | Fetching UI | TanStack Query | 5.x | Infinite scroll fluido, manejo de caché en cliente, hidratación con RSC |
 | Búsqueda full-text | Typesense Cloud | — | Búsqueda instantánea (< 50ms), typo-tolerance, ranking por relevancia. Reemplaza `LIKE '%text%'` para la búsqueda principal |
 | Caché Edge | Upstash Redis | — | Compatible con Edge Runtime (HTTP-based), sin Vercel vendor lock-in. Caché de queries Socrata, rate limiting |
-| AI / Chat | Vercel AI SDK | 4.x | Streaming first-class, tool calls con Zod, ejecución directa de tools |
+| AI / Chat | Vercel AI SDK | 6.x | Streaming first-class, tool calls con Zod, ejecución directa de tools |
 | Rate Limiting | @upstash/ratelimit | — | Rate limiting por IP usando sliding window en Redis |
 | Deploy | Vercel | — | CI/CD automático, Edge Functions, CDN global. Funciona en plan gratuito |
 
@@ -190,7 +190,7 @@ secopia/
 
 | Capa | Tecnología | Justificación |
 |---|---|---|
-| SDK | `@modelcontextprotocol/server` | SDK oficial de Anthropic para TS (nueva estructura modular) |
+| SDK | `@modelcontextprotocol/sdk` | SDK oficial de Anthropic para TS (nueva estructura modular) |
 | Validación | `zod/v4` | Validación de inputs en cada tool via `registerTool` |
 | Transporte local | stdio | Para Claude Desktop, Cursor, Claude Code |
 | Build | tsup | Bundle rápido, genera CJS + ESM |
@@ -517,8 +517,8 @@ Los Resources permiten al LLM descubrir datos disponibles sin ejecutar queries. 
 ```typescript
 // packages/mcp/src/server.ts
 
-import { McpServer } from "@modelcontextprotocol/server";
-import type { CallToolResult } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod/v4";
 import { SocrataClient, SoQLBuilder, DATASETS } from "@secopia/socrata-client";
 
@@ -646,7 +646,7 @@ export function createSecopiaServer(appToken?: string): McpServer {
 // packages/mcp/bin/mcp.ts
 #!/usr/bin/env node
 
-import { StdioServerTransport } from "@modelcontextprotocol/server";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createSecopiaServer } from "../src/server.js";
 
 const server = createSecopiaServer(process.env.SOCRATA_APP_TOKEN);
@@ -940,10 +940,8 @@ Solo debe ser utilizado por clientes MCP externos (Claude Desktop remoto, IDEs, 
 // apps/mcp-server/src/index.ts
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import {
-  NodeStreamableHTTPServerTransport,
-} from "@modelcontextprotocol/node";
-import { isInitializeRequest } from "@modelcontextprotocol/server";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createSecopiaServer } from "@secopia/mcp";
 
 const mcpServer = createSecopiaServer(process.env.SOCRATA_APP_TOKEN);
@@ -1090,11 +1088,11 @@ Usuario aplica filtros (departamento, valor, fecha, modalidad)
 Usuario escribe pregunta en ChatPanel
   → POST /api/chat (Vercel Edge)
   → Rate limit check (10 msgs/min por IP)
-  → Vercel AI SDK → Anthropic API
-  → Anthropic requiere datos → Invoca tool "buscar_contratos"
+  → Vercel AI SDK → Google Gemini API
+  → Gemini requiere datos → Invoca tool "buscar_contratos"
   → Edge Function ejecuta SocrataClient DIRECTAMENTE (Sin saltar a MCP-HTTP)
   → SocrataClient → Socrata API (sanitizado por SoQLBuilder)
-  → Resultado vuelve a Anthropic → Genera respuesta textual
+  → Resultado vuelve a Gemini → Genera respuesta textual
   → Streaming de vuelta al browser
 ```
 
@@ -1151,7 +1149,7 @@ Script programado (cron cada 30min o GitHub Action)
    - `/api/buscar`: 30 req / 10s (uso normal de búsqueda)
    - `/api/chat`: 10 req / 60s (operación costosa con LLM)
 
-4. **API keys solo en servidor.** `SOCRATA_APP_TOKEN` y `ANTHROPIC_API_KEY` nunca llegan al cliente. Validados al inicio del proceso, no en runtime.
+4. **API keys solo en servidor.** `SOCRATA_APP_TOKEN` y `GOOGLE_GENERATIVE_AI_API_KEY` nunca llegan al cliente. Validados al inicio del proceso, no en runtime.
 
 5. **Límites de query.** `SoQLBuilder.limit()` tiene un cap de 200 (límite de Socrata). `offset` tiene un floor de 0. Las tools del MCP tienen límites de 100 vía Zod schema.
 
@@ -1179,7 +1177,7 @@ Script programado (cron cada 30min o GitHub Action)
 ```bash
 # .env.local
 SOCRATA_APP_TOKEN=            # Token de datos.gov.co — requerido
-ANTHROPIC_API_KEY=            # Clave de Anthropic — para el chat
+GOOGLE_GENERATIVE_AI_API_KEY= # Clave de Google AI Studio — para el chat
 UPSTASH_REDIS_REST_URL=       # Upstash Redis URL (caché + rate limiting)
 UPSTASH_REDIS_REST_TOKEN=     # Upstash Redis Token
 TYPESENSE_HOST=               # Host de Typesense Cloud
@@ -1278,7 +1276,7 @@ services:
 - [ ] Implementar `apps/mcp-server` con `node:http` + MCP SDK transport
 
 ### Fase 2 — Web MVP Core (semana 5-8)
-- [ ] Scaffolding Next.js 15
+- [ ] Scaffolding Next.js 16
 - [ ] Implementar rate limiting con `@upstash/ratelimit`
 - [ ] Implementar `/api/buscar` con caché Redis (TTL 10min) y SoQLBuilder seguro
 - [ ] Página de resultados con TanStack Query infinite scroll

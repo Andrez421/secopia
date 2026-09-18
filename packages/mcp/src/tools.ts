@@ -253,20 +253,14 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
     {
       title: "Estadísticas de Entidad",
       description:
-        "Obtiene contratos de una entidad para calcular estadísticas. Devuelve los datos crudos para que el LLM pueda calcular totales, promedios y distribuciones.",
+        "Estadísticas de contratación de una entidad, agregadas en Socrata: conteo, valor total y valor promedio por estado y modalidad. Exactas — no dependen de una muestra de filas.",
       inputSchema: estadisticasEntidadSchema,
       annotations: TOOL_ANNOTATIONS,
     },
     async (args): Promise<CallToolResult> => {
       try {
         const ds = DATASETS.contratos;
-        const q = new SoQLBuilder().select([
-          ds.campos.valor,
-          ds.campos.modalidad,
-          ds.campos.proveedor,
-          ds.campos.fecha_firma,
-          ds.campos.estado,
-        ]);
+        const q = new SoQLBuilder();
 
         q.like(ds.campos.entidad, args.nombre_entidad);
         if (args.anio) {
@@ -274,14 +268,20 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
           q.lte(ds.campos.fecha_firma, `${args.anio}-12-31`);
         }
 
-        q.orderBy(ds.campos.fecha_firma).limit(100);
+        q.groupBy(
+          [ds.campos.estado, ds.campos.modalidad],
+          [
+            { fn: "count", alias: "contratos" },
+            { fn: "sum", field: ds.campos.valor, alias: "valor_total" },
+            { fn: "avg", field: ds.campos.valor, alias: "valor_promedio" },
+          ],
+        ).orderBy("valor_total");
 
         const results = await client.query(ds.id, q.build());
         return jsonResult({
           entidad: args.nombre_entidad,
           anio: args.anio ?? "todos",
-          contratos: results,
-          total: results.length,
+          estadisticas: results,
         });
       } catch (error) {
         return errorResult(error);
@@ -294,22 +294,16 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
   server.registerTool(
     "top_proveedores",
     {
-      title: "Contratos para Análisis de Proveedores",
+      title: "Top Proveedores",
       description:
-        "Obtiene contratos crudos que permiten analizar y clasificar proveedores. Devuelve registros individuales de contratos para que el LLM pueda calcular rankings, totales y estadísticas por proveedor del lado del cliente.",
+        "Ranking de proveedores por valor total adjudicado, agregado en Socrata: cada fila es un proveedor con su valor_total y número de contratos. Ordenado por valor_total descendente.",
       inputSchema: topProveedoresSchema,
       annotations: TOOL_ANNOTATIONS,
     },
     async (args): Promise<CallToolResult> => {
       try {
         const ds = DATASETS.contratos;
-        const q = new SoQLBuilder().select([
-          ds.campos.proveedor,
-          ds.campos.documento_proveedor,
-          ds.campos.valor,
-          ds.campos.entidad,
-          ds.campos.fecha_firma,
-        ]);
+        const q = new SoQLBuilder();
 
         if (args.entidad) q.like(ds.campos.entidad, args.entidad);
         if (args.departamento) q.equals(ds.campos.departamento, args.departamento);
@@ -318,10 +312,18 @@ export function registerTools(server: McpServer, client: SocrataClient): void {
           q.lte(ds.campos.fecha_firma, `${args.anio}-12-31`);
         }
 
-        q.orderBy(ds.campos.valor).limit(args.limite);
+        q.groupBy(
+          [ds.campos.proveedor, ds.campos.documento_proveedor],
+          [
+            { fn: "sum", field: ds.campos.valor, alias: "valor_total" },
+            { fn: "count", alias: "contratos" },
+          ],
+        )
+          .orderBy("valor_total")
+          .limit(args.limite);
 
         const results = await client.query(ds.id, q.build());
-        return jsonResult({ contratos: results, total: results.length });
+        return jsonResult({ proveedores: results, total: results.length });
       } catch (error) {
         return errorResult(error);
       }

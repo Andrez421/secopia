@@ -21,15 +21,26 @@ import type { SortDirection } from "@secopia/types";
 const FIELD_NAME_PATTERN = /^[a-z_][a-z0-9_]*$/i;
 
 /** Allowed characters in user input values after sanitization */
-const SAFE_VALUE_PATTERN = /[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g;
+const SAFE_VALUE_PATTERN = /[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.,]/g;
 
 /** Maximum rows Socrata will return per request */
 const SOCRATA_MAX_LIMIT = 200;
+
+/** An aggregate expression for SoQLBuilder.groupBy(). */
+export interface SoQLAggregate {
+  /** Aggregate function — count, sum, avg, min, max. */
+  fn: "count" | "sum" | "avg" | "min" | "max";
+  /** Field the function applies to; omit for count(*). */
+  field?: string;
+  /** Output column name (validated as an identifier). */
+  alias: string;
+}
 
 export class SoQLBuilder {
   private conditions: string[] = [];
   private selectFields: string[] = ["*"];
   private orderByField?: string;
+  private groupByFields?: string[];
   private limitVal = 50;
   private offsetVal = 0;
 
@@ -37,7 +48,8 @@ export class SoQLBuilder {
 
   /**
    * Sanitizes a user-provided value for safe use in SoQL.
-   * Strips all characters except letters (with accents), numbers, spaces, hyphens, and dots.
+   * Strips all characters except letters (with accents), numbers, spaces, hyphens,
+   * dots, and commas (needed for names like "San Andrés, Providencia y Santa Catalina").
    * Collapses consecutive hyphens (--) to prevent SQL comment syntax.
    */
   private sanitize(value: string): string {
@@ -157,10 +169,32 @@ export class SoQLBuilder {
 
   /**
    * Set ORDER BY field and direction. Default direction is DESC.
+   * Accepts a select alias when grouping (e.g. ORDER BY the aggregate alias).
    */
   orderBy(field: string, dir: SortDirection = "DESC"): this {
     const safeField = this.sanitizeField(field);
     this.orderByField = `${safeField} ${dir}`;
+    return this;
+  }
+
+  /**
+   * Aggregate query: `SELECT <groupFields>, <fn>(<field>) AS <alias>, ...`
+   * plus `GROUP BY <groupFields>`. Aggregating server-side is what makes
+   * "top N by total" and per-entity statistics exact instead of asking a
+   * downstream consumer to sum a capped page of raw rows.
+   *
+   * All field names and aliases are validated as identifiers; a `count`
+   * aggregate with no field emits `count(*)`.
+   */
+  groupBy(groupFields: string[], aggregates: SoQLAggregate[]): this {
+    const safeGroups = groupFields.map((f) => this.sanitizeField(f));
+    const safeAggs = aggregates.map((a) => {
+      const safeAlias = this.sanitizeField(a.alias);
+      if (a.fn === "count" && a.field === undefined) return `count(*) AS ${safeAlias}`;
+      return `${a.fn}(${this.sanitizeField(a.field ?? "")}) AS ${safeAlias}`;
+    });
+    this.selectFields = [...safeGroups, ...safeAggs];
+    this.groupByFields = safeGroups;
     return this;
   }
 
@@ -188,6 +222,9 @@ export class SoQLBuilder {
     const parts: string[] = [`SELECT ${this.selectFields.join(", ")}`];
     if (this.conditions.length > 0) {
       parts.push(`WHERE ${this.conditions.join(" AND ")}`);
+    }
+    if (this.groupByFields?.length) {
+      parts.push(`GROUP BY ${this.groupByFields.join(", ")}`);
     }
     if (this.orderByField) {
       parts.push(`ORDER BY ${this.orderByField}`);

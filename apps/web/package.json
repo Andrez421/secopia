@@ -10,6 +10,7 @@
     "start": "next start",
     "check": "tsc --noEmit",
     "lint": "biome check app/ components/ lib/",
+    "test": "node --test --import tsx lib/**/*.test.ts",
     "clean": "rm -rf .next"
   },
   "dependencies": {

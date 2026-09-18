@@ -23,8 +23,10 @@ interface PageProps {
 
 async function getContracts(nombre: string): Promise<ContratoSECOP2[]> {
   const ds = DATASETS.contratos;
+  // Exact match: a partial LIKE would mix contracts from different
+  // entities whose names share a substring, skewing the stats.
   const q = new SoQLBuilder()
-    .like(ds.campos.entidad, nombre)
+    .equals(ds.campos.entidad, nombre)
     .orderBy(ds.campos.fecha_firma)
     .limit(200)
     .build();
@@ -51,15 +53,16 @@ function computeStats(contracts: ContratoSECOP2[]) {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  // params are already URL-decoded by Next.js — decoding again
+  // throws URIError on names containing a literal '%'
   const { nombre } = await params;
-  const decoded = decodeURIComponent(nombre);
-  const contracts = await getContracts(decoded);
+  const contracts = await getContracts(nombre);
 
   if (contracts.length === 0) {
     return { title: "Entidad no encontrada" };
   }
 
-  const entidad = contracts[0]?.nombre_entidad ?? decoded;
+  const entidad = contracts[0]?.nombre_entidad ?? nombre;
   return {
     title: `${entidad} — Entidad SECOP`,
     description: `${contracts.length} contratos registrados en SECOP II para ${entidad}`,
@@ -68,14 +71,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EntidadPage({ params }: PageProps) {
   const { nombre } = await params;
-  const decoded = decodeURIComponent(nombre);
-  const contracts = await getContracts(decoded);
+  const contracts = await getContracts(nombre);
 
   if (contracts.length === 0) {
     notFound();
   }
 
-  const entidad = contracts[0]?.nombre_entidad ?? decoded;
+  const entidad = contracts[0]?.nombre_entidad ?? nombre;
   const nit = contracts[0]?.nit_entidad;
   const depto = contracts[0]?.departamento;
   const stats = computeStats(contracts);

@@ -8,7 +8,7 @@ Monorepo: Colombian public procurement search (SECOP I & II). pnpm workspaces + 
 
 ```
 apps/
-  web/           # Next.js 15 (App Router, Edge runtime, Vercel)
+  web/           # Next.js 16 (App Router, Edge runtime, Vercel)
   mcp-server/    # Remote MCP server (node:http, Fly.io)
 packages/
   types/         # Shared TS interfaces
@@ -109,7 +109,7 @@ Key env vars (see `.env.example` for full list):
 ## Architecture Notes
 
 ### Web App (`apps/web`)
-- **Framework:** Next.js 15, App Router, React 19, Tailwind CSS v4
+- **Framework:** Next.js 16, App Router, React 19, Tailwind CSS v4
 - **Dev server:** `next dev --turbopack` (Turbopack, not webpack)
 - **API routes:** Edge runtime (`export const runtime = "edge"`)
 - **Rate limits:** 30 req/10s (search), 10 req/60s (chat) — per IP via Upstash Redis

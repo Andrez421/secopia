@@ -119,8 +119,10 @@ function computeStats(contracts: ContratoSECOP2[]): ProviderStats {
 // ─── Metadata ─────────────────────────────────────────────────────
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  // params are already URL-decoded by Next.js — decoding again
+  // throws URIError on values containing a literal '%'
   const { nit } = await params;
-  const contracts = await getContracts(decodeURIComponent(nit));
+  const contracts = await getContracts(nit);
   if (contracts.length === 0) return { title: "Proveedor no encontrado" };
   const nombre = contracts[0]?.proveedor_adjudicado ?? `NIT ${nit}`;
   return {
@@ -134,13 +136,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: page component with data fetching and sections
 export default async function ProveedorPage({ params }: PageProps) {
   const { nit } = await params;
-  const decodedNit = decodeURIComponent(nit);
-  const contracts = await getContracts(decodedNit);
+  const contracts = await getContracts(nit);
 
   if (contracts.length === 0) notFound();
 
   const first = contracts[0] as ContratoSECOP2;
-  const nombre = first.proveedor_adjudicado ?? `NIT ${decodedNit}`;
+  const nombre = first.proveedor_adjudicado ?? `NIT ${nit}`;
   const stats = computeStats(contracts);
   const companyType = deriveCompanyType(contracts[0]?.tipodocproveedor);
   const active = isActive(contracts);
@@ -223,7 +224,7 @@ export default async function ProveedorPage({ params }: PageProps) {
                 d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0"
               />
             </svg>
-            NIT: <strong className="text-[var(--color-foreground)]">{decodedNit}</strong>
+            NIT: <strong className="text-[var(--color-foreground)]">{nit}</strong>
           </span>
 
           {location && (
