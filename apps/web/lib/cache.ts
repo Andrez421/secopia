@@ -42,3 +42,18 @@ export async function setCached<T>(key: string, value: T): Promise<void> {
     // Cache failures should not break the app
   }
 }
+
+/**
+ * Acquire a short-lived lock (SET NX). Returns true when this caller
+ * holds the lock. Used to deduplicate background work like count queries.
+ */
+export async function acquireCacheLock(key: string, ttlSeconds: number): Promise<boolean> {
+  const redis = getRedis();
+  if (!redis) return false;
+  try {
+    const res = await redis.set(`${CACHE_PREFIX}:${key}`, 1, { ex: ttlSeconds, nx: true });
+    return res === "OK";
+  } catch {
+    return false;
+  }
+}

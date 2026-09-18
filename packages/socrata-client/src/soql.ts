@@ -246,6 +246,21 @@ export class SoQLBuilder {
     parts.push(`OFFSET ${this.offsetVal}`);
     return parts.join(" ");
   }
+
+  /**
+   * Build a `SELECT count(*)` query sharing this builder's WHERE conditions.
+   * ORDER BY, GROUP BY, LIMIT and OFFSET do not apply to a count.
+   * Used for total-count lookups — Socrata cannot report totals on a
+   * regular rows query, and the count may run a full scan so callers
+   * should treat it as an expensive operation.
+   */
+  buildCount(): string {
+    const parts = ["SELECT count(*)"];
+    if (this.conditions.length > 0) {
+      parts.push(`WHERE ${this.conditions.join(" AND ")}`);
+    }
+    return parts.join(" ");
+  }
 }
 
 /**

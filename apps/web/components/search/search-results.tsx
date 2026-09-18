@@ -4,8 +4,9 @@
  * SearchResults — Paginated results list
  *
  * Page-based pagination via `pagina` + `limite` URL params (30/50/100).
- * The Typesense path returns a real total; the Socrata path cannot know
- * the total, so "next" stays enabled while a full page is returned.
+ * The API reports `hasMore` (limite+1 probe) plus a best-known `total`:
+ * exact when `totalExact` (last page reached or background count landed),
+ * otherwise a lower bound shown as "Más de N resultados".
  *
  * NUMERIC QUERY DETECTION:
  * When the query `q` is a pure digit string (5-15 chars), the API returns
@@ -148,10 +149,12 @@ export function SearchResults() {
   // ── NUMERIC QUERY: show provider profile card ─────────────────
   // Only for contratos — document lookup is only defined on that dataset
   if (isNumericQuery(q) && tipo === "contratos") {
+    const providerCount = data?.totalExact ? data.total : items.length;
     return (
       <div>
         <p className="pb-4 text-sm text-[var(--color-muted)]">
-          Proveedor encontrado · {items.length} contrato{items.length !== 1 ? "s" : ""} en SECOP II
+          Proveedor encontrado · {providerCount}
+          {data?.totalExact ? "" : "+"} contrato{providerCount !== 1 ? "s" : ""} en SECOP II
           {data?.fromCache && " · desde caché"}
         </p>
         <ProviderCard contracts={items} />
@@ -160,19 +163,23 @@ export function SearchResults() {
   }
 
   // ── TEXT QUERY: paginated contract cards ─────────────────────
-  const hasNextPage = items.length >= limite;
-  // Typesense responses carry a real total (query_soql starts with "typesense:");
-  // Socrata cannot know the total, so page count is only exact on the ts path.
-  const totalReal = data?.query_soql?.startsWith("typesense:") ? data.total : undefined;
-  const totalPages = totalReal !== undefined ? Math.ceil(totalReal / limite) : undefined;
+  // hasMore comes from the API's limite+1 probe; the page-full heuristic
+  // remains as a fallback for responses cached before the field existed.
+  const hasNextPage = data?.hasMore ?? items.length >= limite;
+  const isPartial = data?.partial === true;
+  const total = data?.total ?? items.length;
+  const totalExact = data?.totalExact === true;
+  const totalPages = totalExact ? Math.ceil(total / limite) : undefined;
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
         <p className="text-sm text-[var(--color-muted)]">
-          {totalReal !== undefined
-            ? `${totalReal.toLocaleString("es-CO")} resultados`
-            : `Página ${pagina}`}
+          {isPartial
+            ? `${total.toLocaleString("es-CO")} resultados · índice parcial`
+            : totalExact
+              ? `${total.toLocaleString("es-CO")} resultados`
+              : `Más de ${total.toLocaleString("es-CO")} resultados`}
           {data?.fromCache && " · desde caché"}
         </p>
 

@@ -219,4 +219,25 @@ describe("SoQLBuilder", () => {
       assert.match(query, /OFFSET 10/);
     });
   });
+
+  describe("buildCount", () => {
+    it("builds a bare count query without conditions", () => {
+      const query = new SoQLBuilder().buildCount();
+      assert.equal(query, "SELECT count(*)");
+    });
+
+    it("keeps WHERE conditions but drops ORDER BY, LIMIT and OFFSET", () => {
+      const query = new SoQLBuilder()
+        .like("nombre_entidad", "hospital")
+        .gte("valor_del_contrato", 1000)
+        .orderBy("fecha_de_firma")
+        .limit(30)
+        .offset(60)
+        .buildCount();
+      assert.equal(
+        query,
+        "SELECT count(*) WHERE upper(nombre_entidad) like '%HOSPITAL%' AND valor_del_contrato >= 1000",
+      );
+    });
+  });
 });

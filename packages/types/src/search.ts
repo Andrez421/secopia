@@ -42,7 +42,21 @@ export interface SearchFilters {
 /** Paginated API response from /api/buscar */
 export interface SearchResponse<T> {
   items: T[];
+  /**
+   * Best-known match count. Exact when `totalExact` is true; otherwise a
+   * lower bound (matches seen so far) — Socrata cannot report totals on a
+   * rows query.
+   */
   total: number;
+  /** True when `total` is the exact match count, not a lower bound */
+  totalExact?: boolean;
+  /** True when more results exist beyond this page */
+  hasMore?: boolean;
+  /**
+   * True when results come from the partial Typesense index as a degraded
+   * fallback (Socrata unavailable) — coverage is a subset of the dataset.
+   */
+  partial?: boolean;
   query_soql: string;
   fromCache?: boolean;
   /** Time in milliseconds for Typesense search (only present for Typesense results) */

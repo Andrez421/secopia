@@ -1,10 +1,15 @@
 /**
- * /api/buscar — Search API Route (Dual Search)
+ * /api/buscar — Search API Route
  *
- * DUAL SEARCH STRATEGY:
- * - Free text queries (param `q`): Typesense for instant full-text search (<50ms)
- * - Advanced filters (departamento, valor, fecha): Socrata via SoQLBuilder
- * - If Typesense is unavailable: falls back to Socrata for all queries
+ * SEARCH STRATEGY:
+ * - Socrata is the primary path for ALL queries (full ~5M-row dataset) —
+ *   free text via orLike across entity/provider/description fields.
+ * - Typesense is a degraded fallback for text-only queries when Socrata
+ *   fails: its index holds ~50K rows (partial coverage, flagged `partial`).
+ * - Totals: rows are fetched as limite+1 (hasMore probe). Exact counts run
+ *   in the background via after() + SELECT count(*) and land in Redis for
+ *   subsequent pages — the count can take ~60s (full scan), too slow for
+ *   the request path.
  *
  * SECURITY:
  * - Rate limited: 30 req/10s per IP
@@ -13,14 +18,14 @@
  * - Limit/offset clamped by SoQLBuilder
  */
 
-import { getCached, setCached } from "@/lib/cache";
+import { acquireCacheLock, getCached, setCached } from "@/lib/cache";
 import { getClientIp, getSearchRateLimiter } from "@/lib/rate-limit";
 import { validateSearchParams } from "@/lib/search-validation";
-import { getSocrataClient } from "@/lib/socrata";
+import { getSocrataClient, getSocrataCountClient } from "@/lib/socrata";
 import { searchContratos } from "@/lib/typesense";
 import { DATASETS, SoQLBuilder, getDataset } from "@secopia/socrata-client";
 import type { SearchResponse } from "@secopia/types";
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse, after } from "next/server";
 
 export const runtime = "edge";
 
@@ -49,6 +54,79 @@ function isTextOnlyQuery(params: URLSearchParams): boolean {
 /** Detect if a query looks like a document/NIT number (digits only, 5-15 chars) */
 function isNumericQuery(q: string): boolean {
   return /^\d{5,15}$/.test(q.trim());
+}
+
+/**
+ * Fire-and-forget exact count: `SELECT count(*)` runs a full scan that
+ * can take ~60s — too slow for the request path. after() executes it
+ * post-response and caches the total for subsequent pages.
+ */
+function scheduleExactCount(datasetId: string, countKey: string, countQuery: string): void {
+  after(async () => {
+    try {
+      const rows = await getSocrataCountClient().query<{ count: string }>(datasetId, countQuery);
+      const n = Number(rows[0]?.count);
+      if (Number.isFinite(n)) await setCached(countKey, n);
+    } catch (error) {
+      console.warn(
+        "[api/buscar] background count failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  });
+}
+
+/** Schedule the background count unless the total is already known/in-flight. */
+async function maybeScheduleCount(
+  hasMore: boolean,
+  cachedCount: number | null,
+  datasetId: string,
+  countKey: string,
+  countQuery: string,
+): Promise<void> {
+  if (hasMore && cachedCount === null && (await acquireCacheLock(`lock:${countKey}`, 120))) {
+    scheduleExactCount(datasetId, countKey, countQuery);
+  }
+}
+
+/**
+ * Degraded search via the partial Typesense index (~50K of 5M+ rows).
+ * Only reached when Socrata fails — responses are flagged `partial`
+ * so the UI can communicate reduced coverage instead of a wrong total.
+ */
+async function searchTypesensePartial(
+  q: string,
+  limite: number,
+  offset: number,
+  rateLimitRemaining: number,
+): Promise<NextResponse | null> {
+  try {
+    const tsResult = await searchContratos({
+      q,
+      limit: Math.min(limite, 200),
+      offset: Math.max(0, offset),
+    });
+
+    const response: SearchResponse<unknown> = {
+      items: tsResult.items,
+      total: tsResult.total,
+      hasMore: offset + tsResult.items.length < tsResult.total,
+      totalExact: true,
+      partial: true,
+      query_soql: `typesense:${q}`,
+      searchTimeMs: tsResult.searchTimeMs,
+    };
+
+    return NextResponse.json(response, {
+      headers: { "X-RateLimit-Remaining": String(rateLimitRemaining) },
+    });
+  } catch (tsError) {
+    console.warn(
+      "[api/buscar] Typesense fallback also failed:",
+      tsError instanceof Error ? tsError.message : tsError,
+    );
+    return null;
+  }
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: API handler with multiple sequential stages
@@ -118,58 +196,12 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── 3. Typesense path (free text, contratos only, non-numeric) ─
-    // Numeric queries (cédula/NIT) bypass Typesense: the index holds
-    // only 50K records out of 5M+. Exact document lookups go to Socrata.
+    // ── 3. Build SoQL — fetch limite+1 rows as a hasMore probe ─
+    // Socrata cannot report a total; the extra row cheaply tells us
+    // whether another page exists beyond this one.
 
-    if (
-      q &&
-      tipo === "contratos" &&
-      isTextOnlyQuery(req.nextUrl.searchParams) &&
-      !isNumericQuery(q) &&
-      isTypesenseAvailable()
-    ) {
-      const cacheKey = `ts:${q}:${limite}:${offset}`;
-      const cached = await getCached<SearchResponse<unknown>>(cacheKey);
-
-      if (cached) {
-        return NextResponse.json(
-          { ...cached, fromCache: true },
-          { headers: { "X-RateLimit-Remaining": String(remaining) } },
-        );
-      }
-
-      try {
-        const tsResult = await searchContratos({
-          q,
-          limit: Math.min(limite, 200),
-          offset: Math.max(0, offset),
-        });
-
-        const response: SearchResponse<unknown> = {
-          items: tsResult.items,
-          total: tsResult.total,
-          query_soql: `typesense:${q}`,
-          searchTimeMs: tsResult.searchTimeMs,
-        };
-
-        await setCached(cacheKey, response);
-
-        return NextResponse.json(response, {
-          headers: { "X-RateLimit-Remaining": String(remaining) },
-        });
-      } catch (tsError) {
-        // Typesense failed — fall through to Socrata
-        console.warn(
-          "[api/buscar] Typesense error, falling back to Socrata:",
-          tsError instanceof Error ? tsError.message : tsError,
-        );
-      }
-    }
-
-    // ── 4. Socrata path (filters or fallback) ──────────────
-
-    const builder = new SoQLBuilder().limit(limite).offset(offset);
+    const fetchLimit = Math.min(limite + 1, 200); // Socrata max
+    const builder = new SoQLBuilder().limit(fetchLimit).offset(offset);
 
     // Free text search: orLike across multiple fields (sanitized)
     if (q) {
@@ -199,37 +231,70 @@ export async function GET(req: NextRequest) {
     builder.orderBy(ds.campos.fecha_firma);
 
     const soqlQuery = builder.build();
+    const countQuery = builder.buildCount();
 
-    // ── 5. Check Redis Cache ────────────────────────────────
+    // ── 4. Check Redis Cache ────────────────────────────────
 
     const cacheKey = `${ds.id}:${soqlQuery}`;
+    const countKey = `count:${ds.id}:${countQuery}`;
     const cached = await getCached<SearchResponse<unknown>>(cacheKey);
 
     if (cached) {
+      // Re-derive the total on every hit: the background count may have
+      // landed in Redis after this response was cached.
+      const cachedCount = cached.hasMore ? await getCached<number>(countKey) : null;
+      await maybeScheduleCount(cached.hasMore ?? false, cachedCount, ds.id, countKey, countQuery);
       return NextResponse.json(
-        { ...cached, fromCache: true },
+        {
+          ...cached,
+          total: cachedCount ?? cached.total,
+          totalExact: !cached.hasMore || cachedCount !== null,
+          fromCache: true,
+        },
         {
           headers: { "X-RateLimit-Remaining": String(remaining) },
         },
       );
     }
 
-    // ── 6. Query Socrata ────────────────────────────────────
+    // ── 5. Query Socrata (primary path — full dataset) ──────
 
     const client = getSocrataClient();
-    const results = await client.query(ds.id, soqlQuery);
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await client.query(ds.id, soqlQuery);
+    } catch (socrataError) {
+      // Socrata down or timed out — degraded fallback to the partial
+      // Typesense index for text-only contratos queries.
+      if (
+        q &&
+        tipo === "contratos" &&
+        !isNumericQuery(q) &&
+        isTextOnlyQuery(req.nextUrl.searchParams) &&
+        isTypesenseAvailable()
+      ) {
+        const degraded = await searchTypesensePartial(q, limite, offset, remaining);
+        if (degraded) return degraded;
+      }
+      throw socrataError;
+    }
 
-    // Socrata does not provide a total count. If we received fewer rows than
-    // requested, we know the exact total; otherwise it's unknown.
-    const exactTotal = results.length < limite ? results.length : undefined;
+    // When fetchLimit == limite (limite already at the 200 cap), a full
+    // page can't distinguish "exactly N" from "more" — stay optimistic.
+    const hasMore = rows.length > limite || (fetchLimit === limite && rows.length === fetchLimit);
+    const items = rows.slice(0, limite);
+    const cachedCount = hasMore ? await getCached<number>(countKey) : null;
+    await maybeScheduleCount(hasMore, cachedCount, ds.id, countKey, countQuery);
 
     const response: SearchResponse<unknown> = {
-      items: results,
-      total: exactTotal ?? results.length,
+      items,
+      total: cachedCount ?? offset + items.length,
+      hasMore,
+      totalExact: !hasMore || cachedCount !== null,
       query_soql: soqlQuery,
     };
 
-    // ── 7. Cache & Return ───────────────────────────────────
+    // ── 6. Cache & Return ───────────────────────────────────
 
     await setCached(cacheKey, response);
 
