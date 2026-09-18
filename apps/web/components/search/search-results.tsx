@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * SearchResults — Infinite scroll results list
+ * SearchResults — Paginated results list
  *
- * Uses TanStack Query's useInfiniteQuery for seamless pagination.
+ * Page-based pagination via `pagina` + `limite` URL params (30/50/100).
+ * The Typesense path returns a real total; the Socrata path cannot know
+ * the total, so "next" stays enabled while a full page is returned.
  *
  * NUMERIC QUERY DETECTION:
  * When the query `q` is a pure digit string (5-15 chars), the API returns
@@ -16,18 +18,15 @@ import { ContractCard } from "@/components/contract/contract-card";
 import { ProviderCard } from "@/components/contract/provider-card";
 import { normalizeContract } from "@/lib/normalize";
 import type { ContratoSECOP2, SearchResponse } from "@secopia/types";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZES = [30, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 30;
 
-async function fetchResults(
-  params: string,
-  offset: number,
-): Promise<SearchResponse<ContratoSECOP2>> {
-  const separator = params ? "&" : "";
-  const res = await fetch(`/api/buscar?${params}${separator}limite=${PAGE_SIZE}&offset=${offset}`);
+async function fetchResults(params: string): Promise<SearchResponse<ContratoSECOP2>> {
+  const res = await fetch(`/api/buscar?${params}`);
   if (!res.ok) {
     throw new Error(`Error ${res.status}: ${res.statusText}`);
   }
@@ -39,51 +38,51 @@ function isNumericQuery(q: string | null): boolean {
   return !!q && /^\d{5,15}$/.test(q.trim());
 }
 
+function parsePageSize(value: string | null): number {
+  const n = Number(value);
+  return (PAGE_SIZES as readonly number[]).includes(n) ? n : DEFAULT_PAGE_SIZE;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: results component with sequential render states
 export function SearchResults() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const paramsString = searchParams.toString();
   const q = searchParams.get("q");
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError, error } =
-    useInfiniteQuery({
-      queryKey: ["search", paramsString],
-      queryFn: ({ pageParam = 0 }) => fetchResults(paramsString, pageParam),
-      getNextPageParam: (lastPage, allPages) => {
-        if (lastPage.items.length < PAGE_SIZE) return undefined;
-        return allPages.reduce((sum, p) => sum + p.items.length, 0);
-      },
-      initialPageParam: 0,
-      enabled: paramsString.length > 0,
-    });
+  const limite = parsePageSize(searchParams.get("limite"));
+  const pagina = Math.max(1, Number.parseInt(searchParams.get("pagina") ?? "1", 10) || 1);
 
-  // Reset scroll to top when query/filters change
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — scroll on query change
+  // API params: strip UI-only params, inject limit/offset for this page
+  const apiParams = new URLSearchParams(paramsString);
+  apiParams.delete("pagina");
+  apiParams.set("limite", String(limite));
+  apiParams.set("offset", String((pagina - 1) * limite));
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["search", apiParams.toString()],
+    queryFn: () => fetchResults(apiParams.toString()),
+    enabled: paramsString.length > 0,
+  });
+
+  // Scroll to top when the page changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — scroll on param change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [paramsString]);
 
-  // Infinite scroll observer
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage],
-  );
+  function goToPage(page: number) {
+    const params = new URLSearchParams(paramsString);
+    params.set("pagina", String(page));
+    router.push(`/buscar?${params.toString()}`);
+  }
 
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(handleObserver, {
-      rootMargin: "200px",
-    });
-    if (loadMoreRef.current) {
-      observerRef.current.observe(loadMoreRef.current);
-    }
-    return () => observerRef.current?.disconnect();
-  }, [handleObserver]);
+  function setPageSize(size: string) {
+    const params = new URLSearchParams(paramsString);
+    params.set("limite", size);
+    params.delete("pagina");
+    router.push(`/buscar?${params.toString()}`);
+  }
 
   // Empty state
   if (!paramsString) {
@@ -122,16 +121,27 @@ export function SearchResults() {
   const tipo = searchParams.get("tipo") ?? "contratos";
   // procesos/secop1 rows have different field names — normalize to the
   // ContratoSECOP2 display shape so cards render real data
-  const allItems = (data?.pages ?? []).flatMap((page) =>
-    page.items.map((item) => normalizeContract(item as unknown as Record<string, unknown>, tipo)),
+  const items = (data?.items ?? []).map((item) =>
+    normalizeContract(item as unknown as Record<string, unknown>, tipo),
   );
 
   // No results
-  if (allItems.length === 0) {
+  if (items.length === 0) {
     return (
-      <p className="py-12 text-center text-[var(--color-muted)]">
-        No se encontraron resultados. Intenta con otros términos o filtros.
-      </p>
+      <div className="py-12 text-center">
+        <p className="text-[var(--color-muted)]">
+          No se encontraron resultados. Intenta con otros términos o filtros.
+        </p>
+        {pagina > 1 && (
+          <button
+            type="button"
+            onClick={() => goToPage(1)}
+            className="mt-3 rounded-md border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-accent)]"
+          >
+            ← Volver a la página 1
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -141,35 +151,151 @@ export function SearchResults() {
     return (
       <div>
         <p className="pb-4 text-sm text-[var(--color-muted)]">
-          Proveedor encontrado · {allItems.length} contrato{allItems.length !== 1 ? "s" : ""} en
-          SECOP II
-          {data?.pages[0]?.fromCache && " · desde caché"}
+          Proveedor encontrado · {items.length} contrato{items.length !== 1 ? "s" : ""} en SECOP II
+          {data?.fromCache && " · desde caché"}
         </p>
-        <ProviderCard contracts={allItems} />
+        <ProviderCard contracts={items} />
       </div>
     );
   }
 
-  // ── TEXT QUERY: show individual contract cards with infinite scroll ─
+  // ── TEXT QUERY: paginated contract cards ─────────────────────
+  const hasNextPage = items.length >= limite;
+  // Typesense responses carry a real total (query_soql starts with "typesense:");
+  // Socrata cannot know the total, so page count is only exact on the ts path.
+  const totalReal = data?.query_soql?.startsWith("typesense:") ? data.total : undefined;
+  const totalPages = totalReal !== undefined ? Math.ceil(totalReal / limite) : undefined;
+
   return (
     <div>
-      <p className="pb-4 text-sm text-[var(--color-muted)]">
-        {allItems.length} resultados cargados
-        {data?.pages[0]?.fromCache && " · desde caché"}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
+        <p className="text-sm text-[var(--color-muted)]">
+          {totalReal !== undefined
+            ? `${totalReal.toLocaleString("es-CO")} resultados`
+            : `Página ${pagina}`}
+          {data?.fromCache && " · desde caché"}
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+          Por página
+          <select
+            value={limite}
+            onChange={(e) => setPageSize(e.target.value)}
+            className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-1 text-sm outline-none focus:border-[var(--color-primary)]"
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div className="space-y-3">
-        {allItems.map((item, index) => (
+        {items.map((item, index) => (
           <ContractCard key={item.id_contrato || `result-${index}`} contract={item} />
         ))}
       </div>
 
-      {/* Infinite scroll trigger */}
-      <div ref={loadMoreRef} className="py-8 text-center">
-        {isFetchingNextPage && (
-          <p className="text-sm text-[var(--color-muted)]">Cargando más resultados...</p>
-        )}
-      </div>
+      <Pagination
+        pagina={pagina}
+        totalPages={totalPages}
+        hasNextPage={hasNextPage}
+        onGoToPage={goToPage}
+      />
     </div>
   );
+}
+
+/**
+ * Pagination bar — prev/next plus a numbered window around the current
+ * page. When the backend reports a real total (Typesense), the window is
+ * bounded by totalPages; otherwise it extends optimistically while full
+ * pages keep coming back.
+ */
+function Pagination({
+  pagina,
+  totalPages,
+  hasNextPage,
+  onGoToPage,
+}: {
+  pagina: number;
+  totalPages?: number;
+  hasNextPage: boolean;
+  onGoToPage: (page: number) => void;
+}) {
+  const lastKnown = totalPages ?? (hasNextPage ? pagina + 1 : pagina);
+  if (pagina <= 1 && !hasNextPage) return null;
+
+  const pages: number[] = [];
+  const windowStart = Math.max(1, Math.min(pagina - 2, lastKnown - 4));
+  const windowEnd = Math.min(lastKnown, windowStart + 4);
+  for (let p = windowStart; p <= windowEnd; p++) pages.push(p);
+
+  const btnBase =
+    "rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm transition-colors";
+  const btnEnabled = "hover:bg-[var(--color-accent)] text-[var(--color-foreground)]";
+  const btnDisabled = "opacity-40 cursor-not-allowed text-[var(--color-muted)]";
+  const btnActive = "border-[var(--color-primary)] bg-[var(--color-primary)] text-white";
+
+  return (
+    <nav
+      aria-label="Paginación"
+      className="mt-6 flex flex-wrap items-center justify-center gap-1.5"
+    >
+      <button
+        type="button"
+        onClick={() => onGoToPage(pagina - 1)}
+        disabled={pagina <= 1}
+        className={`${btnBase} ${pagina <= 1 ? btnDisabled : btnEnabled}`}
+      >
+        ← Anterior
+      </button>
+
+      {windowStart > 1 && (
+        <>
+          <PageButton page={1} pagina={pagina} onGoToPage={onGoToPage} />
+          {windowStart > 2 && <span className="px-1 text-[var(--color-muted)]">…</span>}
+        </>
+      )}
+
+      {pages.map((p) => (
+        <PageButton key={p} page={p} pagina={pagina} onGoToPage={onGoToPage} />
+      ))}
+
+      {windowEnd < lastKnown && (
+        <>
+          {windowEnd < lastKnown - 1 && <span className="px-1 text-[var(--color-muted)]">…</span>}
+          <PageButton page={lastKnown} pagina={pagina} onGoToPage={onGoToPage} />
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => onGoToPage(pagina + 1)}
+        disabled={!hasNextPage}
+        className={`${btnBase} ${!hasNextPage ? btnDisabled : btnEnabled}`}
+      >
+        Siguiente →
+      </button>
+    </nav>
+  );
+
+  function PageButton({
+    page,
+    pagina: current,
+    onGoToPage: go,
+  }: { page: number; pagina: number; onGoToPage: (p: number) => void }) {
+    return (
+      <button
+        type="button"
+        onClick={() => go(page)}
+        aria-current={page === current ? "page" : undefined}
+        className={`${btnBase} min-w-9 ${page === current ? btnActive : btnEnabled}`}
+      >
+        {page}
+      </button>
+    );
+  }
 }
