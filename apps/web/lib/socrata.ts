@@ -28,15 +28,16 @@ let countClient: SocrataClient | null = null;
 
 /**
  * SocrataClient with a long timeout for background count(*) queries.
- * A count over filtered LIKE conditions can scan millions of rows and
- * take ~60s — far beyond the 15s default used on the request path.
+ * A count over filtered LIKE conditions scans millions of rows and
+ * observed latencies exceed 90s under load — far beyond the 15s
+ * default used on the request path.
  */
 export function getSocrataCountClient(): SocrataClient {
   if (!countClient) {
     countClient = new SocrataClient({
       appToken: process.env.SOCRATA_APP_TOKEN,
       cache: { ttlMs: 0 },
-      timeoutMs: 90_000,
+      timeoutMs: 180_000,
     });
   }
   return countClient;

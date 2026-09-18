@@ -18,7 +18,7 @@
  * - Limit/offset clamped by SoQLBuilder
  */
 
-import { acquireCacheLock, getCached, setCached } from "@/lib/cache";
+import { acquireCacheLock, deleteCached, getCached, setCached } from "@/lib/cache";
 import { getClientIp, getSearchRateLimiter } from "@/lib/rate-limit";
 import { validateSearchParams } from "@/lib/search-validation";
 import { getSocrataClient, getSocrataCountClient } from "@/lib/socrata";
@@ -58,10 +58,16 @@ function isNumericQuery(q: string): boolean {
 
 /**
  * Fire-and-forget exact count: `SELECT count(*)` runs a full scan that
- * can take ~60s — too slow for the request path. after() executes it
- * post-response and caches the total for subsequent pages.
+ * can take ~2-3 min under load — too slow for the request path. after()
+ * executes it post-response and caches the total for subsequent pages.
+ * On failure the lock is released so the next request may retry.
  */
-function scheduleExactCount(datasetId: string, countKey: string, countQuery: string): void {
+function scheduleExactCount(
+  datasetId: string,
+  countKey: string,
+  countQuery: string,
+  lockKey: string,
+): void {
   after(async () => {
     try {
       const rows = await getSocrataCountClient().query<{ count: string }>(datasetId, countQuery);
@@ -72,6 +78,7 @@ function scheduleExactCount(datasetId: string, countKey: string, countQuery: str
         "[api/buscar] background count failed:",
         error instanceof Error ? error.message : error,
       );
+      await deleteCached(lockKey);
     }
   });
 }
@@ -84,8 +91,10 @@ async function maybeScheduleCount(
   countKey: string,
   countQuery: string,
 ): Promise<void> {
-  if (hasMore && cachedCount === null && (await acquireCacheLock(`lock:${countKey}`, 120))) {
-    scheduleExactCount(datasetId, countKey, countQuery);
+  const lockKey = `lock:${countKey}`;
+  // Lock TTL covers the count client's 180s timeout plus margin.
+  if (hasMore && cachedCount === null && (await acquireCacheLock(lockKey, 240))) {
+    scheduleExactCount(datasetId, countKey, countQuery, lockKey);
   }
 }
 

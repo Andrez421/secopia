@@ -57,3 +57,14 @@ export async function acquireCacheLock(key: string, ttlSeconds: number): Promise
     return false;
   }
 }
+
+/** Delete a cached value or release a lock early (e.g. after failed work). */
+export async function deleteCached(key: string): Promise<void> {
+  const redis = getRedis();
+  if (!redis) return;
+  try {
+    await redis.del(`${CACHE_PREFIX}:${key}`);
+  } catch {
+    // Cache failures should not break the app
+  }
+}
