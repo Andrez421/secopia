@@ -51,17 +51,17 @@ export async function POST(req: Request) {
     // ── 2. Validate Body ──────────────────────────────────
 
     const rawBody = await req.text();
-    if (rawBody.length > 4000) {
-      return Response.json(
-        { error: "Payload demasiado grande. Máximo 4000 caracteres." },
-        { status: 400 },
-      );
+    if (rawBody.length > 100_000) {
+      return Response.json({ error: "Payload demasiado grande. Máximo 100 KB." }, { status: 400 });
     }
 
-    const messageSchema = z.object({
-      role: z.string(),
-      content: z.string(),
-    });
+    // AI SDK v6 wire format: UIMessage = { id, role, parts, metadata? }
+    const messageSchema = z
+      .object({
+        role: z.enum(["system", "user", "assistant"]),
+        parts: z.array(z.unknown()).min(1),
+      })
+      .passthrough();
 
     const bodySchema = z.object({
       messages: z.array(messageSchema).min(1, "Se requiere al menos un mensaje"),
@@ -91,7 +91,12 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             entidad: z.string().optional().describe("Nombre de la entidad contratante"),
             proveedor: z.string().optional().describe("Nombre del proveedor/contratista"),
-            departamento: z.string().optional().describe("Departamento (ej: BOGOTA)"),
+            departamento: z
+              .string()
+              .optional()
+              .describe(
+                "Departamento con el valor exacto del dataset (ej: 'Distrito Capital de Bogotá', 'Antioquia')",
+              ),
             valor_min: z.number().optional().describe("Valor mínimo en COP"),
             valor_max: z.number().optional().describe("Valor máximo en COP"),
             fecha_inicio: z.string().optional().describe("Fecha desde (YYYY-MM-DD)"),
@@ -119,7 +124,12 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             entidad: z.string().optional().describe("Nombre de la entidad"),
             descripcion: z.string().optional().describe("Texto en la descripción"),
-            departamento: z.string().optional().describe("Departamento"),
+            departamento: z
+              .string()
+              .optional()
+              .describe(
+                "Departamento con el valor exacto del dataset (ej: 'Antioquia', 'Cundinamarca')",
+              ),
             limite: z.number().min(1).max(50).default(10),
           }),
           execute: async (args) => {
@@ -139,7 +149,12 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             entidad: z.string().optional().describe("Nombre de la entidad"),
             objeto: z.string().optional().describe("Objeto a contratar"),
-            departamento: z.string().optional().describe("Departamento"),
+            departamento: z
+              .string()
+              .optional()
+              .describe(
+                "Departamento con el valor exacto del dataset (ej: 'Antioquia', 'Cundinamarca')",
+              ),
             limite: z.number().min(1).max(50).default(10),
           }),
           execute: async (args) => {
