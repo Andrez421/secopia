@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { ThemeToggle } from "@/components/theme-toggle";
+
+// Applies the stored (or system) theme before first paint so the
+// page never flashes the wrong color scheme.
+const themeBootScript = `try{var t=localStorage.getItem("theme");var d=t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches;var e=document.documentElement;e.classList.toggle("dark",d);e.classList.toggle("light",!d)}catch(e){}`;
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +39,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static inline script, no user data — required to set the theme class before paint */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body className="min-h-screen antialiased">
         <Providers>
           <header className="border-b border-[var(--color-border)]">
@@ -48,8 +57,9 @@ export default function RootLayout({
                 >
                   Buscar
                 </Link>
+                <ThemeToggle />
                 <a
-                  href="https://github.com/secopia/secopia"
+                  href="https://github.com/Andrez421/secopia"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-[var(--color-foreground)] transition-colors"
