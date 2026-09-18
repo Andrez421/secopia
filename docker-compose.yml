@@ -53,11 +53,7 @@ services:
       - typesense-data:/data
     command: --data-dir /data --api-key=dev-key --enable-cors
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
+    # No healthcheck: the typesense image ships no curl/wget to probe with
 
   # Rolling-window indexer: keeps the last TYPESENSE_WINDOW_YEARS of
   # contracts indexed and purges older docs automatically.
@@ -79,7 +75,7 @@ services:
       SYNC_FULL_DOW: "7"
     depends_on:
       typesense:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
 
 volumes:
