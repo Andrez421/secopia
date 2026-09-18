@@ -59,6 +59,13 @@ describe("SoQLBuilder", () => {
       assert.match(query, /BOGOTÁ/);
     });
 
+    it("preserves commas in values (department names contain them)", () => {
+      const query = new SoQLBuilder()
+        .equals("departamento", "San Andrés, Providencia y Santa Catalina")
+        .build();
+      assert.match(query, /departamento = 'San Andrés, Providencia y Santa Catalina'/);
+    });
+
     it("returns this without adding condition when value sanitizes to empty", () => {
       const query = new SoQLBuilder().like("nombre_entidad", "!@#$%^&*()").build();
       assert.equal(query, "SELECT * LIMIT 50 OFFSET 0");

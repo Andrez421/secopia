@@ -22,7 +22,9 @@ const baseSearchParams = {
   departamento: z
     .string()
     .optional()
-    .describe("Departamento (ej: BOGOTA, ANTIOQUIA, CUNDINAMARCA)"),
+    .describe(
+      "Departamento con el valor exacto del dataset, ej: 'Antioquia', 'Valle del Cauca', 'Distrito Capital de Bogotá', 'Cundinamarca'",
+    ),
   limite: limitParam,
 };
 
@@ -60,7 +62,10 @@ export const buscarSecop1Schema = z.object({
 export const buscarProveedoresSchema = z.object({
   nombre: z.string().optional().describe("Nombre parcial o completo del proveedor"),
   nit: z.string().optional().describe("NIT del proveedor (sin dígito de verificación)"),
-  departamento: z.string().optional().describe("Departamento donde opera el proveedor"),
+  departamento: z
+    .string()
+    .optional()
+    .describe("Departamento con el valor exacto del dataset (ej: 'Antioquia', 'Cundinamarca')"),
   limite: limitParam,
 });
 
@@ -82,7 +87,10 @@ export const estadisticasEntidadSchema = z.object({
 
 export const topProveedoresSchema = z.object({
   entidad: z.string().optional().describe("Filtrar por entidad contratante"),
-  departamento: z.string().optional().describe("Filtrar por departamento"),
+  departamento: z
+    .string()
+    .optional()
+    .describe("Filtrar por departamento con el valor exacto del dataset (ej: 'Antioquia')"),
   anio: z.number().int().optional().describe("Filtrar por año"),
   limite: z
     .number()

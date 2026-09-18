@@ -21,7 +21,7 @@ import type { SortDirection } from "@secopia/types";
 const FIELD_NAME_PATTERN = /^[a-z_][a-z0-9_]*$/i;
 
 /** Allowed characters in user input values after sanitization */
-const SAFE_VALUE_PATTERN = /[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g;
+const SAFE_VALUE_PATTERN = /[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.,]/g;
 
 /** Maximum rows Socrata will return per request */
 const SOCRATA_MAX_LIMIT = 200;
@@ -37,7 +37,8 @@ export class SoQLBuilder {
 
   /**
    * Sanitizes a user-provided value for safe use in SoQL.
-   * Strips all characters except letters (with accents), numbers, spaces, hyphens, and dots.
+   * Strips all characters except letters (with accents), numbers, spaces, hyphens,
+   * dots, and commas (needed for names like "San Andrés, Providencia y Santa Catalina").
    * Collapses consecutive hyphens (--) to prevent SQL comment syntax.
    */
   private sanitize(value: string): string {

@@ -52,6 +52,7 @@ export const DATASETS = {
       fecha_firma: "fecha_de_publicacion_del",
       modalidad: "modalidad_de_contratacion",
       nit_entidad: "nit_entidad",
+      documento_proveedor: "nit_del_proveedor_adjudicado",
       fase: "fase",
       estado: "estado_del_procedimiento",
       id_proceso: "id_del_proceso",
