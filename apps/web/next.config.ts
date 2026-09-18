@@ -1,8 +1,14 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Opt into React 19 features
   reactStrictMode: true,
+
+  // Standalone output for Docker/self-hosted deploys (node server.js)
+  output: "standalone",
+  // Trace from the monorepo root so workspace packages are included
+  outputFileTracingRoot: path.join(import.meta.dirname, "../../"),
 
   // Transpile workspace packages
   transpilePackages: ["@secopia/socrata-client", "@secopia/types"],
