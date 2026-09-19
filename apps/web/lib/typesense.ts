@@ -80,7 +80,16 @@ export async function searchContratos<T = Record<string, unknown>>(
       sort_by: "fecha_de_firma:desc",
     });
 
-  const items = (result.hits ?? []).map((hit: { document: unknown }) => hit.document as T);
+  const items = (result.hits ?? []).map((hit: { document: unknown }) => {
+    const doc = hit.document as Record<string, unknown>;
+    // Typesense stores fecha_de_firma as int64 epoch; Socrata rows carry an
+    // ISO string. Normalize here so UI helpers (formatDate) get one shape.
+    if (typeof doc.fecha_de_firma === "number") {
+      doc.fecha_de_firma =
+        doc.fecha_de_firma > 0 ? new Date(doc.fecha_de_firma * 1000).toISOString() : "";
+    }
+    return doc as T;
+  });
 
   return {
     items,
